@@ -201,6 +201,19 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
               viewModel.purchaseProduct(true);
             }).setNegativeButton(R.string.action_cancel, (dialog, which) -> performHapticClick())
             .setOnCancelListener(dialog -> performHapticClick()).create().show();
+      } else if (event.getType() == Event.CONFIRM_BARCODE_DEFAULT_CHANGE) {
+        // Purely about whether to also update the remembered barcode default - both buttons
+        // let the purchase itself proceed, never block it.
+        new MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.title_barcode_default_changed)
+            .setMessage(getString(R.string.msg_barcode_default_changed))
+            .setPositiveButton(R.string.action_save_as_default, (dialog, which) -> {
+              performHapticClick();
+              viewModel.purchaseAndSaveAsNewDefault();
+            }).setNegativeButton(R.string.action_purchase_once, (dialog, which) -> {
+              performHapticClick();
+              viewModel.purchaseOnceWithoutSavingDefault();
+            }).setOnCancelListener(dialog -> performHapticClick()).create().show();
       }
     });
 

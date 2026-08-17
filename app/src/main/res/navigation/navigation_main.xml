@@ -793,6 +793,61 @@
         app:argType="string"
         app:nullable="true"
         android:defaultValue="@null" />
+      <argument
+        android:name="barcode"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offBrand"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offQuantity"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offImageUrl"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offEnergyPer100g"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offIngredients"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offAllergens"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offNutriscore"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offOrigin"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offNutrients"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offPackagingType"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
     </fragment>
     <fragment
       android:id="@+id/masterProductCatOptionalFragment"

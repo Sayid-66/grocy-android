@@ -99,7 +99,18 @@ public class ChooseProductFragment extends BaseFragment
     Object newProductId = getFromThisDestinationNow(ARGUMENT.PRODUCT_ID);
     if (newProductId != null) {  // if user created a new product and navigates back to this fragment this is the new productId
       setForPreviousDestination(Constants.ARGUMENT.PRODUCT_ID, newProductId);
-      setForPreviousDestination(ARGUMENT.BARCODE, barcode);
+      // Forward the originally scanned barcode by default, exactly like before this bugfix -
+      // e.g. the "copy existing product" flow (onItemRowClicked below, copy=true) never passes
+      // a barcode to MasterProductViewModel at all, so nothing there ever attempts to link it,
+      // and this forward (letting the screen below, e.g. PurchaseViewModel, link it once the new
+      // product exists) is the only thing that does. Only skip it when MasterProductFragment
+      // explicitly confirms it already had this exact barcode itself and therefore already
+      // attempted the link - forwarding it anyway in that case would make the screen below try
+      // to link the same barcode a second time and fail as a duplicate.
+      Object barcodeAlreadyHandled = getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED);
+      if (!Boolean.TRUE.equals(barcodeAlreadyHandled)) {
+        setForPreviousDestination(ARGUMENT.BARCODE, barcode);
+      }
       setForPreviousDestination(ARGUMENT.BACK_FROM_CHOOSE_PRODUCT_PAGE, true);
       activity.navUtil.navigateUp();
       return;
@@ -219,9 +230,21 @@ public class ChooseProductFragment extends BaseFragment
   }
 
   public void createNewProduct() {
+    String barcode = ChooseProductFragmentArgs.fromBundle(requireArguments()).getBarcode();
     navigateDeepLinkHorizontally(R.string.deep_link_masterProductFragment,
         new MasterProductFragmentArgs.Builder(Constants.ACTION.CREATE)
             .setProductName(viewModel.getProductNameLive().getValue())
+            .setBarcode(barcode)
+            .setOffBrand(viewModel.getOffBrand())
+            .setOffQuantity(viewModel.getOffQuantity())
+            .setOffImageUrl(viewModel.getOffImageUrl())
+            .setOffEnergyPer100g(viewModel.getOffEnergyPer100g())
+            .setOffIngredients(viewModel.getOffIngredients())
+            .setOffAllergens(viewModel.getOffAllergens())
+            .setOffNutriscore(viewModel.getOffNutriscore())
+            .setOffOrigin(viewModel.getOffOrigin())
+            .setOffNutrients(viewModel.getOffNutrients())
+            .setOffPackagingType(viewModel.getOffPackagingType())
             .build().toBundle());
   }
 

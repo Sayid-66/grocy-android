@@ -119,6 +119,24 @@ public class PurchaseViewModel extends BaseViewModel {
   private final int maxDecimalPlacesAmount;
   private final int decimalPlacesPriceInput;
 
+  // "Just this purchase" vs "save as new default" (see purchaseProduct/barcodeDefaultChanged):
+  // the exact ProductBarcode row that was used to prefill the form, plus the amount/qu_id that
+  // were ACTUALLY applied to the form from it (not just whatever the row happens to hold - tare
+  // weight handling or a quantity unit with no conversion for this product can both make
+  // setProduct() skip the barcode's value, in which case there is nothing to compare against).
+  @Nullable
+  private ProductBarcode learnedBarcode;
+  @Nullable
+  private Double learnedBarcodeAppliedAmount;
+  @Nullable
+  private Integer learnedBarcodeAppliedQuId;
+  private boolean updateBarcodeDefaultPending;
+  // Independent from the pre-existing CONFIRM_FREEZING "confirmed" re-entry flag: both dialogs
+  // must be able to show in sequence when both conditions apply for the same purchase attempt,
+  // never let confirming one silently also skip the other. Reset only at the true start of a
+  // fresh attempt (purchaseProduct(), the no-arg entry point) - all re-entries keep it as-is.
+  private boolean barcodeDefaultDialogConfirmed;
+
   public PurchaseViewModel(@NonNull Application application, PurchaseFragmentArgs args) {
     super(application);
 
@@ -250,6 +268,22 @@ public class PurchaseViewModel extends BaseViewModel {
       return;
     }
 
+    // Reset the "learned default" baseline on every call (different/null barcode or a different
+    // product): a stale comparison must never survive to be persisted against the wrong barcode
+    // row later in purchaseProduct(). Never a PendingProductBarcode: its id is a local Room
+    // autoincrement id for a pending product, not a real server ProductBarcode id - PUTting
+    // against it later (updateLearnedBarcodeDefault) could hit an unrelated real barcode row if
+    // the ids happen to collide (both are small autoincrement ints). onBarcodeRecognized already
+    // routes pending-product barcodes to setPendingProduct() instead, but checkProductInput()
+    // does not, so this must guard here too.
+    learnedBarcode = barcode != null && !(barcode instanceof PendingProductBarcode)
+        && (barcode.hasAmount() || barcode.hasQuId()) ? barcode : null;
+    // Set below, inside the listener, only for whichever of amount/qu_id actually gets applied
+    // to the form from this barcode - tare weight handling or a quantity unit with no conversion
+    // for this product can both make the prefill below skip it despite the barcode having it.
+    learnedBarcodeAppliedAmount = null;
+    learnedBarcodeAppliedQuId = null;
+
     OnObjectResponseListener<ProductDetails> listener = productDetails -> {
       Product updatedProduct = productDetails.getProduct();
 
@@ -286,6 +320,9 @@ public class PurchaseViewModel extends BaseViewModel {
       if (forcedUnit != null && unitFactors.containsKey(forcedUnit)) {
         formData.getQuantityUnitLive().setValue(forcedUnit);
         factor = unitFactors.get(forcedUnit);
+        if (barcode != null && barcode.hasQuId() && forcedUnit.getId() == barcode.getQuIdInt()) {
+          learnedBarcodeAppliedQuId = forcedUnit.getId();
+        }
       } else {
         QuantityUnit purchase = quantityUnitHashMap.get(updatedProduct.getQuIdPurchaseInt());
         formData.getQuantityUnitLive().setValue(purchase);
@@ -299,6 +336,7 @@ public class PurchaseViewModel extends BaseViewModel {
         // if barcode contains amount, take this (with tare weight handling off)
         // quick mode status doesn't matter
         formData.getAmountLive().setValue(NumUtil.trimAmount(barcode.getAmountDouble(), maxDecimalPlacesAmount));
+        learnedBarcodeAppliedAmount = barcode.getAmountDouble();
       } else if (!isTareWeightEnabled && shoppingListItem != null) {
         Double amountInUnit = AmountUtil.getShoppingListItemAmount(
             shoppingListItem, productHashMap, quantityUnitHashMap, unitConversions,
@@ -635,7 +673,110 @@ public class PurchaseViewModel extends BaseViewModel {
   }
 
   public void purchaseProduct() {
+    // A genuinely fresh attempt (the only entry point reachable other than the confirm-dialog
+    // re-entries below) - reset both the barcode-default-dialog gate (so a decision made on a
+    // previous, unrelated purchase can never suppress this dialog here) and the "save as new
+    // default" intent (so, if the user previously chose that but then cancelled a later
+    // CONFIRM_FREEZING prompt without ever completing that purchase, it can't silently attach
+    // itself to this different, later purchase instead).
+    barcodeDefaultDialogConfirmed = false;
+    updateBarcodeDefaultPending = false;
     purchaseProduct(false);
+  }
+
+  /**
+   * "Nur für diesen Einkauf verwenden": proceeds with the purchase exactly as if the learned
+   * barcode default had matched, without touching the remembered ProductBarcode row. Re-enters
+   * with confirmed=false (not true) so the SEPARATE, pre-existing CONFIRM_FREEZING safety prompt
+   * - if it also applies to this same purchase - still gets its own chance to fire, instead of
+   * being silently skipped by a confirmation that was only ever about the barcode default.
+   */
+  public void purchaseOnceWithoutSavingDefault() {
+    barcodeDefaultDialogConfirmed = true;
+    purchaseProduct(false);
+  }
+
+  /**
+   * "Als neuen Standard speichern": proceeds with the purchase and, only once it itself
+   * succeeds, PUTs the matched ProductBarcode with the current form's amount/quantity unit so
+   * future scans of this exact barcode prefill the new values. See
+   * purchaseOnceWithoutSavingDefault() for why this re-enters with confirmed=false.
+   */
+  public void purchaseAndSaveAsNewDefault() {
+    barcodeDefaultDialogConfirmed = true;
+    updateBarcodeDefaultPending = true;
+    purchaseProduct(false);
+  }
+
+  /**
+   * Whether the current form's amount or quantity unit differs from what was ACTUALLY applied to
+   * the form from the ProductBarcode that prefilled it (see setProduct()/
+   * learnedBarcodeAppliedAmount/learnedBarcodeAppliedQuId - NOT just whatever the row happens to
+   * hold, since e.g. tare weight handling or a quantity unit with no conversion for this product
+   * can both make setProduct() skip applying it, in which case there is nothing to compare
+   * against and this must never fire). Never true if no barcode was learned yet (brand new
+   * barcode) - that case is exactly what saveProduct/linkScannedBarcodeAndUploadPending in
+   * MasterProductViewModel is for, not this dialog.
+   */
+  private boolean barcodeDefaultChanged() {
+    if (learnedBarcode == null) {
+      return false;
+    }
+    String currentAmount = formData.getAmountLive().getValue();
+    boolean amountChanged = learnedBarcodeAppliedAmount != null && (
+        !NumUtil.isStringDouble(currentAmount)
+            || Math.abs(NumUtil.toDouble(currentAmount) - learnedBarcodeAppliedAmount) > 0.0001
+    );
+    QuantityUnit currentQu = formData.getQuantityUnitLive().getValue();
+    boolean quChanged = learnedBarcodeAppliedQuId != null
+        && (currentQu == null || currentQu.getId() != learnedBarcodeAppliedQuId);
+    return amountChanged || quChanged;
+  }
+
+  private void updateLearnedBarcodeDefault() {
+    if (learnedBarcode == null) {
+      return;
+    }
+    // Partial body (amount + qu_id only, like linkOffPictureToProduct's picture_file_name-only
+    // PUT elsewhere in this app) - never resend shopping_location_id/note/last_price from this
+    // possibly-stale cached copy, which could last-write-wins overwrite a change made elsewhere
+    // (e.g. the Grocy web UI) since this list was last synced.
+    JSONObject body = new JSONObject();
+    String amount = formData.getAmountLive().getValue();
+    QuantityUnit currentQu = formData.getQuantityUnitLive().getValue();
+    try {
+      body.put("amount", amount != null ? amount : JSONObject.NULL);
+      body.put("qu_id", currentQu != null ? currentQu.getId() : JSONObject.NULL);
+    } catch (JSONException e) {
+      if (debug) {
+        Log.e(TAG, "updateLearnedBarcodeDefault: " + e);
+      }
+      return;
+    }
+    int barcodeId = learnedBarcode.getId();
+    String barcodeString = learnedBarcode.getBarcode();
+    dlHelper.put(
+        grocyApi.getObject(GrocyApi.ENTITY.PRODUCT_BARCODES, barcodeId),
+        body,
+        response -> {
+          // Only mutate the shared cached object (from the `barcodes` list loaded from Room)
+          // once the write actually succeeded - never before, or a failed PUT would leave the
+          // in-memory list claiming a default that was never actually saved server-side.
+          learnedBarcode.setAmount(amount);
+          if (currentQu != null) {
+            learnedBarcode.setQuId(String.valueOf(currentQu.getId()));
+          }
+          if (debug) {
+            Log.i(TAG, "updateLearnedBarcodeDefault: updated barcode " + barcodeString);
+          }
+        },
+        error -> {
+          if (debug) {
+            Log.w(TAG, "updateLearnedBarcodeDefault: failed to update barcode "
+                + barcodeString + ": " + describeVolleyError(error));
+          }
+        }
+    );
   }
 
   public void purchaseProduct(boolean confirmed) {
@@ -659,6 +800,16 @@ public class PurchaseViewModel extends BaseViewModel {
     assert formData.getProductDetailsLive().getValue() != null;
     Product product = formData.getProductDetailsLive().getValue().getProduct();
     JSONObject body = formData.getFilledJSONObject();
+
+    // Zero extra clicks in the common case: only asked about when a learned barcode default
+    // actually exists AND the user changed the amount/unit away from it. Gated on its own
+    // dedicated flag, NOT the shared `confirmed` parameter below - otherwise confirming this
+    // dialog would also silently skip the separate CONFIRM_FREEZING safety prompt if both apply
+    // to the same purchase.
+    if (!barcodeDefaultDialogConfirmed && barcodeDefaultChanged()) {
+      sendEvent(Event.CONFIRM_BARCODE_DEFAULT_CHANGE);
+      return;
+    }
 
     if (!confirmed && product.getShouldNotBeFrozenBoolean()
         && formData.getLocationLive().getValue() != null
@@ -702,6 +853,10 @@ public class PurchaseViewModel extends BaseViewModel {
       }
       showSnackbar(snackbarMessage);
       sendEvent(Event.TRANSACTION_SUCCESS);
+      if (updateBarcodeDefaultPending) {
+        updateBarcodeDefaultPending = false;
+        updateLearnedBarcodeDefault();
+      }
     };
 
     dlHelper.postWithArray(
@@ -716,6 +871,11 @@ public class PurchaseViewModel extends BaseViewModel {
           }
         },
         error -> {
+          // Never leave this armed for a later, unrelated purchase attempt: without clearing it
+          // here, a failed purchase after "save as new default" was chosen would silently update
+          // the barcode default on whatever purchase happens to succeed next - even one the user
+          // explicitly chose "only use for this purchase" for.
+          updateBarcodeDefaultPending = false;
           showNetworkErrorMessage(error);
           if (debug) {
             Log.i(TAG, "purchaseProduct: " + error);
@@ -744,6 +904,47 @@ public class PurchaseViewModel extends BaseViewModel {
       return;
     }
     ProductBarcode productBarcode = formData.fillProductBarcode();
+    if (productBarcode == null) {
+      // Defensive only: purchaseProduct() already checks formData.isFormValid() before calling
+      // this, and fillProductBarcode() returns null exactly when the form is invalid, so this
+      // should be unreachable in practice.
+      if (debug) {
+        Log.w(TAG, "uploadProductBarcode: form invalid, nothing to upload");
+      }
+      return;
+    }
+    // Never blindly create a second row for a barcode Grocy already knows about (it enforces
+    // barcode uniqueness) - e.g. it may already have just been linked automatically when the
+    // product was created from this exact scanned barcode (see
+    // MasterProductViewModel#linkScannedBarcodeAndUploadPending). Re-posting the same barcode
+    // would fail as a server-side duplicate and show a spurious error even though it is already
+    // correctly linked.
+    ProductBarcode existing = ProductBarcode.getFromBarcode(barcodes, productBarcode.getBarcode());
+    if (existing != null && existing.getProductIdInt() == productBarcode.getProductIdInt()) {
+      // Already linked to this exact product - nothing to do, safe to proceed.
+      formData.getBarcodeLive().setValue(null);
+      if (onSuccess != null) {
+        onSuccess.run();
+      }
+      return;
+    }
+    if (existing != null) {
+      // Belongs to a DIFFERENT product - that existing assignment is left untouched, never
+      // overwritten or reassigned here. Matches this method's existing behavior for any other
+      // barcode-link problem below (network/server error): inform the user and do NOT proceed,
+      // rather than silently completing a purchase whose scanned barcode did not actually get
+      // linked. Keeping this outcome the same regardless of whether the conflict was caught here
+      // (via the locally cached barcode list) or only later by the server rejecting the POST
+      // below as a duplicate (e.g. if the list was stale) avoids the same barcode conflict
+      // producing two different results depending on cache freshness.
+      if (debug) {
+        Log.w(TAG, "uploadProductBarcode: barcode " + productBarcode.getBarcode()
+            + " already belongs to product " + existing.getProductIdInt()
+            + ", not linking it to product " + productBarcode.getProductIdInt());
+      }
+      showMessage(R.string.msg_barcode_duplicate);
+      return;
+    }
     JSONObject body = productBarcode.getJsonFromProductBarcode(debug, TAG);
     ProductBarcode.addProductBarcode(dlHelper, body, () -> {
       formData.getBarcodeLive().setValue(null);
@@ -751,7 +952,13 @@ public class PurchaseViewModel extends BaseViewModel {
       if (onSuccess != null) {
         onSuccess.run();
       }
-    }, error -> showMessage(R.string.error_failed_barcode_upload)).perform(dlHelper.getUuid());
+    }, error -> {
+      if (debug) {
+        Log.w(TAG, "uploadProductBarcode: failed to upload barcode "
+            + productBarcode.getBarcode() + ": " + describeVolleyError(error));
+      }
+      showMessage(R.string.error_failed_barcode_upload);
+    }).perform(dlHelper.getUuid());
   }
 
   private void purchasePendingProduct() {

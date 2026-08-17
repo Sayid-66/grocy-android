@@ -22,20 +22,34 @@ package xyz.zedler.patrick.grocy.viewmodel;
 
 import android.app.Application;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.PreferenceManager;
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.FutureTarget;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import org.json.JSONException;
 import org.json.JSONObject;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
+import xyz.zedler.patrick.grocy.Constants.SETTINGS.STOCK;
+import xyz.zedler.patrick.grocy.Constants.SETTINGS_DEFAULT;
 import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.api.GrocyApi;
 import xyz.zedler.patrick.grocy.form.FormDataMasterProduct;
@@ -47,15 +61,26 @@ import xyz.zedler.patrick.grocy.model.PendingProductBarcode;
 import xyz.zedler.patrick.grocy.model.Product;
 import xyz.zedler.patrick.grocy.model.ProductBarcode;
 import xyz.zedler.patrick.grocy.model.ProductDetails;
+import xyz.zedler.patrick.grocy.model.QuantityUnit;
+import xyz.zedler.patrick.grocy.model.QuantityUnitConversion;
 import xyz.zedler.patrick.grocy.repository.MasterProductRepository;
 import xyz.zedler.patrick.grocy.util.ArrayUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
+import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
+import xyz.zedler.patrick.grocy.util.VersionUtil;
 import xyz.zedler.patrick.grocy.web.NetworkQueue;
 
 public class MasterProductViewModel extends BaseViewModel {
 
   private static final String TAG = MasterProductViewModel.class.getSimpleName();
+
+  // Only images served from this exact OFF host are ever fetched. Verified against the live
+  // API (world.openfoodfacts.org product lookup returns image_front_url/image_url on this
+  // host) - not just an "https://" prefix, so an offImageUrl smuggled in through the exported
+  // grocy:// deep link cannot make the app fetch an arbitrary attacker host.
+  private static final String OFF_IMAGE_HOST = "images.openfoodfacts.org";
 
   private final SharedPreferences sharedPrefs;
   private final DownloadHelper dlHelper;
@@ -66,16 +91,48 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<List<PendingProductBarcode>> pendingProductBarcodesLive;
   private final MutableLiveData<Boolean> isLoadingLive;
   private final MutableLiveData<InfoFullscreen> infoFullscreenLive;
+  private final MutableLiveData<String> offProductNameLive;
+  private final MutableLiveData<String> offBrandLive;
+  private final MutableLiveData<String> offQuantityLive;
+  private final MutableLiveData<String> offImageUrlLive;
+  private final MutableLiveData<String> offEnergyPer100gLive;
+  private final MutableLiveData<Boolean> hasOffPreviewLive;
+  private final MutableLiveData<String> offIngredientsLive;
+  private final MutableLiveData<String> offAllergensLive;
+  private final MutableLiveData<String> offNutriscoreLive;
+  private final MutableLiveData<String> offOriginLive;
+  private final MutableLiveData<String> offNutrientsLive;
+  private final MutableLiveData<Boolean> hasOffExtraInfoLive;
+  private final MutableLiveData<Boolean> offExtraInfoExpandedLive;
+  private final MutableLiveData<String> offPackagingTypeLive;
+  private final String scannedBarcode;
+
+  // "Learn once, prefill forever" quick packaging/content entry card (only shown for a genuinely
+  // new, non-cloned product with a scanned barcode - see getShowQuickPackagingEntryLive()).
+  private static final List<String> QUICK_PACKAGING_LABELS = Arrays.asList(
+      "Flasche", "Glas", "Dose", "Packung", "Beutel", "Karton", "Schachtel", "Schale",
+      "Becher", "Tube", "Stück"
+  );
+  private final MutableLiveData<Boolean> showQuickPackagingEntryLive;
+  private final MutableLiveData<String> quickPackagingLive;
+  private final MutableLiveData<String> quickContentAmountLive;
+  private final MutableLiveData<String> quickContentUnitLive;
+  private final MutableLiveData<Boolean> quickPackagingQuMissingLive;
+  private final MutableLiveData<Boolean> quickContentQuMissingLive;
+  private final int maxDecimalPlacesAmount;
 
   private List<Product> products;
   private List<ProductBarcode> productBarcodes;
   private List<PendingProductBarcode> pendingProductBarcodes;
+  private List<QuantityUnit> quantityUnits;
+  private boolean offPackagingQuantityUnitApplied;
 
   private NetworkQueue.QueueItem extraQueueItem;
   private final boolean debug;
   private final MutableLiveData<Boolean> actionEditLive;
   private final MasterProductFragmentArgs args;
   private final boolean forceSaveWithClose;
+  private boolean saveInProgress;
 
   public MasterProductViewModel(
       @NonNull Application application,
@@ -98,6 +155,70 @@ public class MasterProductViewModel extends BaseViewModel {
 
     pendingProductBarcodesLive = new MutableLiveData<>();
     infoFullscreenLive = new MutableLiveData<>();
+    offProductNameLive = new MutableLiveData<>(args.getProductName());
+    offBrandLive = new MutableLiveData<>(args.getOffBrand());
+    offQuantityLive = new MutableLiveData<>(args.getOffQuantity());
+    // Validated once, here at the source: both the preview (Glide load in MasterProductFragment)
+    // and the later upload (handleOffPictureUploadIfNecessary) read this same LiveData, so an
+    // offImageUrl smuggled in through the exported grocy:// deep link with a non-OFF host must
+    // never reach either of them.
+    offImageUrlLive = new MutableLiveData<>(
+        isValidOffImageUrl(args.getOffImageUrl()) ? args.getOffImageUrl() : null
+    );
+    offEnergyPer100gLive = new MutableLiveData<>(args.getOffEnergyPer100g());
+    offPackagingTypeLive = new MutableLiveData<>(args.getOffPackagingType());
+    hasOffPreviewLive = new MutableLiveData<>(
+        !isBlank(offBrandLive.getValue())
+            || !isBlank(offQuantityLive.getValue())
+            || !isBlank(offImageUrlLive.getValue())
+            || !isBlank(offEnergyPer100gLive.getValue())
+            || !isBlank(offPackagingTypeLive.getValue())
+    );
+    offIngredientsLive = new MutableLiveData<>(args.getOffIngredients());
+    offAllergensLive = new MutableLiveData<>(args.getOffAllergens());
+    offNutriscoreLive = new MutableLiveData<>(args.getOffNutriscore());
+    offOriginLive = new MutableLiveData<>(args.getOffOrigin());
+    offNutrientsLive = new MutableLiveData<>(args.getOffNutrients());
+    hasOffExtraInfoLive = new MutableLiveData<>(
+        !isBlank(offIngredientsLive.getValue())
+            || !isBlank(offAllergensLive.getValue())
+            || !isBlank(offNutriscoreLive.getValue())
+            || !isBlank(offOriginLive.getValue())
+            || !isBlank(offNutrientsLive.getValue())
+    );
+    offExtraInfoExpandedLive = new MutableLiveData<>(false);
+    scannedBarcode = args.getBarcode();
+
+    maxDecimalPlacesAmount = sharedPrefs.getInt(
+        STOCK.DECIMAL_PLACES_AMOUNT,
+        SETTINGS_DEFAULT.STOCK.DECIMAL_PLACES_AMOUNT
+    );
+    // Explicitly excludes the "clone" case (args.getProduct()!=null or a valid args.getProductId())
+    // even though hasScannedBarcode() is already false there today (the copy-existing-product
+    // flow never passes a barcode) - the exported grocy:// deep link technically accepts
+    // productId and barcode together, so this must not rely on that only being true in practice.
+    boolean isClone = args.getProduct() != null || NumUtil.isStringInt(args.getProductId());
+    showQuickPackagingEntryLive = new MutableLiveData<>(
+        !isActionEdit() && !isClone && hasScannedBarcode()
+    );
+    String detectedPackagingLabel = args.getOffPackagingType();
+    quickPackagingLive = new MutableLiveData<>(
+        detectedPackagingLabel != null && QUICK_PACKAGING_LABELS.contains(detectedPackagingLabel)
+            ? detectedPackagingLabel : null
+    );
+    OffContentAmountUtil.ParsedContentAmount parsedContentAmount
+        = OffContentAmountUtil.parse(args.getOffQuantity());
+    if (parsedContentAmount != null) {
+      quickContentAmountLive = new MutableLiveData<>(
+          NumUtil.trimAmount(parsedContentAmount.amount, maxDecimalPlacesAmount)
+      );
+      quickContentUnitLive = new MutableLiveData<>(parsedContentAmount.unitName);
+    } else {
+      quickContentAmountLive = new MutableLiveData<>();
+      quickContentUnitLive = new MutableLiveData<>();
+    }
+    quickPackagingQuMissingLive = new MutableLiveData<>(false);
+    quickContentQuMissingLive = new MutableLiveData<>(false);
 
     if (isActionEdit()) {
       if (args.getProduct() != null) {
@@ -179,11 +300,297 @@ public class MasterProductViewModel extends BaseViewModel {
     return formData.fillProduct(formData.getProductLive().getValue());
   }
 
+  /**
+   * Whether this ViewModel was given a barcode to link when it was created (i.e. reached via
+   * ChooseProductFragment#createNewProduct, not e.g. its "copy existing product" flow, which
+   * never passes one). Exposed so MasterProductFragment can tell the screen below not to forward
+   * the same barcode again once saved (see linkScannedBarcodeAndUploadPending). This reflects
+   * the ViewModel's own stable, construction-time field, not the fragment's own arguments: those
+   * get cleared (.setBarcode(null) in MasterProductFragment#onViewCreated) right after being
+   * read once, so re-reading them on a later onViewCreated pass - e.g. after the user visits the
+   * quantity unit screen, required for a new product, and comes back to save - would wrongly
+   * look like no barcode was ever given, even though this same ViewModel instance still holds it
+   * and already attempted to link it.
+   */
+  public boolean hasScannedBarcode() {
+    return !isBlank(scannedBarcode);
+  }
+
+  /**
+   * Prefills stock/purchase/price quantity unit from an OFF-detected packaging type, but only:
+   * - once (guarded), to never fight a value the user picks afterwards on the QU screen,
+   * - for a genuinely new, non-cloned product (never for editing or cloning an existing one -
+   *   those already have deliberately chosen units that must never be touched automatically),
+   * - when OFF's packaging detection was unambiguous,
+   * - when Grocy has EXACTLY ONE quantity unit whose name matches the detected type exactly
+   *   (case-insensitive, trimmed on both sides - never fuzzy, never auto-creates a new unit).
+   * The consume unit is intentionally never derived from OFF data (OFF's packaging tags don't
+   * tell us anything about how a product is consumed) - the only exception is when consume is
+   * still completely unset (id -1, i.e. no preset configured): in that one case it is set to the
+   * same detected unit too, mirroring the existing manual cascade in
+   * FormDataMasterProductCatQuantityUnit#selectQuantityUnit(STOCK, ...), which likewise adopts
+   * the new stock unit for purchase/consume/price only while they are still unset. If a preset
+   * quantity unit is configured, consume keeps that preset value even though stock/purchase/price
+   * just changed; that mismatch (no unit conversion between them) is a pre-existing limitation of
+   * the same manual flow, not something introduced here, and is left to the user to resolve on
+   * the quantity unit screen like it already would be after a manual stock change.
+   * Runs as soon as both the product and the quantity units are available; since both are ready
+   * essentially immediately after ViewModel construction (fast local Room reads before the user
+   * can interact), the same race window already accepted by the analogous one-shot
+   * FormDataMasterProductCatQuantityUnit#fillWithProductIfNecessary prefill applies here too. To
+   * avoid that race silently discarding a product name the user already started typing, the
+   * validity re-trigger below is skipped (not the QU prefill itself) if the name no longer
+   * matches what the product was constructed with.
+   */
+  private void applyOffPackagingQuantityUnitIfPossible() {
+    if (offPackagingQuantityUnitApplied || isActionEdit() || quantityUnits == null) {
+      return;
+    }
+    // Only for a brand-new, non-cloned product - matches the constructor's "new product" branch.
+    if (args.getProduct() != null || NumUtil.isStringInt(args.getProductId())) {
+      offPackagingQuantityUnitApplied = true;
+      return;
+    }
+    String detectedType = offPackagingTypeLive.getValue();
+    if (detectedType != null) {
+      detectedType = detectedType.trim();
+    }
+    if (isBlank(detectedType)) {
+      offPackagingQuantityUnitApplied = true;
+      return;
+    }
+    QuantityUnit match = findUniqueQuantityUnitByName(detectedType);
+    if (match == null) {
+      offPackagingQuantityUnitApplied = true;
+      return;
+    }
+    Product product = formData.getProductLive().getValue();
+    if (product == null) {
+      return; // product not set yet, retry not needed here: loadFromDatabase already runs after construction sets it
+    }
+    product.setQuIdStock(match.getId());
+    product.setQuIdPurchase(match.getId());
+    product.setQuIdPrice(match.getId());
+    if (product.getQuIdConsumeInt() == -1) {
+      product.setQuIdConsume(match.getId());
+    }
+    // Re-trigger dependent validity LiveData (catQuErrorLive etc.), but only if the user hasn't
+    // already typed a different name in the meantime - productLive re-emission would otherwise
+    // also reset the two-way-bound name field back to product.getName().
+    String currentName = formData.getNameLive().getValue();
+    if (currentName == null || currentName.equals(product.getName())) {
+      formData.getProductLive().setValue(product);
+    }
+    offPackagingQuantityUnitApplied = true;
+  }
+
+  @Nullable
+  private QuantityUnit findUniqueQuantityUnitByName(String name) {
+    QuantityUnit match = null;
+    for (QuantityUnit quantityUnit : quantityUnits) {
+      if (quantityUnit.getName() != null && quantityUnit.getName().trim().equalsIgnoreCase(name)) {
+        if (match != null) {
+          return null; // more than one match -> not unique, don't guess
+        }
+        match = quantityUnit;
+      }
+    }
+    return match;
+  }
+
+  public LiveData<String> getOffProductNameLive() {
+    return offProductNameLive;
+  }
+
+  public LiveData<String> getOffBrandLive() {
+    return offBrandLive;
+  }
+
+  public LiveData<String> getOffQuantityLive() {
+    return offQuantityLive;
+  }
+
+  public LiveData<String> getOffImageUrlLive() {
+    return offImageUrlLive;
+  }
+
+  public LiveData<String> getOffEnergyPer100gLive() {
+    return offEnergyPer100gLive;
+  }
+
+  public LiveData<Boolean> getHasOffPreviewLive() {
+    return hasOffPreviewLive;
+  }
+
+  public LiveData<String> getOffIngredientsLive() {
+    return offIngredientsLive;
+  }
+
+  public LiveData<String> getOffAllergensLive() {
+    return offAllergensLive;
+  }
+
+  public LiveData<String> getOffNutriscoreLive() {
+    return offNutriscoreLive;
+  }
+
+  public LiveData<String> getOffOriginLive() {
+    return offOriginLive;
+  }
+
+  public LiveData<String> getOffPackagingTypeLive() {
+    return offPackagingTypeLive;
+  }
+
+  public LiveData<String> getOffNutrientsLive() {
+    return offNutrientsLive;
+  }
+
+  public LiveData<Boolean> getHasOffExtraInfoLive() {
+    return hasOffExtraInfoLive;
+  }
+
+  public LiveData<Boolean> getOffExtraInfoExpandedLive() {
+    return offExtraInfoExpandedLive;
+  }
+
+  public void toggleOffExtraInfoExpanded() {
+    Boolean expanded = offExtraInfoExpandedLive.getValue();
+    offExtraInfoExpandedLive.setValue(expanded == null || !expanded);
+  }
+
+  public LiveData<Boolean> getShowQuickPackagingEntryLive() {
+    return showQuickPackagingEntryLive;
+  }
+
+  public MutableLiveData<String> getQuickPackagingLive() {
+    return quickPackagingLive;
+  }
+
+  public MutableLiveData<String> getQuickContentAmountLive() {
+    return quickContentAmountLive;
+  }
+
+  public MutableLiveData<String> getQuickContentUnitLive() {
+    return quickContentUnitLive;
+  }
+
+  public LiveData<Boolean> getQuickPackagingQuMissingLive() {
+    return quickPackagingQuMissingLive;
+  }
+
+  public LiveData<Boolean> getQuickContentQuMissingLive() {
+    return quickContentQuMissingLive;
+  }
+
+  /**
+   * Called by the fragment when the user (de)selects a chip in the "Verpackung" quick-pick.
+   * Also refreshes the "not yet a Grocy quantity unit" hint for the new selection.
+   */
+  public void setQuickPackaging(@Nullable String name) {
+    quickPackagingLive.setValue(name);
+    updateQuickQuMissingFlags();
+  }
+
+  /**
+   * Called by the fragment when the user (de)selects a chip in the "Inhaltseinheit" quick-pick.
+   * Also refreshes the "not yet a Grocy quantity unit" hint for the new selection.
+   */
+  public void setQuickContentUnit(@Nullable String name) {
+    quickContentUnitLive.setValue(name);
+    updateQuickQuMissingFlags();
+  }
+
+  private void updateQuickQuMissingFlags() {
+    quickPackagingQuMissingLive.setValue(isQuickQuMissing(quickPackagingLive.getValue()));
+    quickContentQuMissingLive.setValue(isQuickQuMissing(quickContentUnitLive.getValue()));
+  }
+
+  private boolean isQuickQuMissing(@Nullable String name) {
+    if (isBlank(name) || quantityUnits == null) {
+      return false;
+    }
+    return findUniqueQuantityUnitByName(name.trim()) == null;
+  }
+
+  @Nullable
+  private Integer resolveQuickQuId(@Nullable String name) {
+    if (isBlank(name) || quantityUnits == null) {
+      return null;
+    }
+    QuantityUnit match = findUniqueQuantityUnitByName(name.trim());
+    return match != null ? match.getId() : null;
+  }
+
+  /**
+   * Quick, minimal quantity unit creation for the quick packaging/content entry card only -
+   * completely separate from and never touching the existing QuantityUnitsBottomSheet/
+   * MasterQuantityUnitFragment full master-data QU creation flow. Adds the created unit to the
+   * in-memory list this ViewModel already tracks so it is immediately treated as available/
+   * selected (the already-checked chip with the same name simply stops showing the "missing"
+   * hint). On failure, falls back to the existing generic network error path.
+   */
+  public void createQuickQuantityUnit(@Nullable String name, @Nullable Consumer<QuantityUnit> onCreated) {
+    if (isBlank(name)) {
+      return;
+    }
+    String trimmedName = name.trim();
+    JSONObject body = new JSONObject();
+    try {
+      body.put("name", trimmedName);
+      body.put("name_plural", trimmedName);
+    } catch (JSONException e) {
+      if (debug) {
+        Log.e(TAG, "createQuickQuantityUnit: " + e);
+      }
+      return;
+    }
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.QUANTITY_UNITS),
+        body,
+        response -> {
+          int objectId = -1;
+          try {
+            objectId = response.getInt("created_object_id");
+          } catch (JSONException e) {
+            if (debug) {
+              Log.e(TAG, "createQuickQuantityUnit: " + e);
+            }
+          }
+          if (objectId == -1) {
+            return;
+          }
+          QuantityUnit created = new QuantityUnit(objectId, trimmedName);
+          if (quantityUnits == null) {
+            quantityUnits = new ArrayList<>();
+          }
+          quantityUnits.add(created);
+          updateQuickQuMissingFlags();
+          if (onCreated != null) {
+            onCreated.accept(created);
+          }
+        },
+        error -> {
+          showNetworkErrorMessage(error);
+          if (debug) {
+            Log.e(TAG, "createQuickQuantityUnit: " + error);
+          }
+        }
+    );
+  }
+
+  private static boolean isBlank(@Nullable String value) {
+    return value == null || value.isBlank();
+  }
+
   public void loadFromDatabase(boolean downloadAfterLoading) {
     repository.loadFromDatabase(data -> {
       this.products = data.getProducts();
       this.productBarcodes = data.getBarcodes();
       this.pendingProductBarcodes = data.getPendingProductBarcodes();
+      this.quantityUnits = data.getQuantityUnits();
+      updateQuickQuMissingFlags();
+      applyOffPackagingQuantityUnitIfPossible();
       formData.getProductNamesLive().setValue(getProductNames(this.products, null));
 
       if (downloadAfterLoading) {
@@ -246,6 +653,14 @@ public class MasterProductViewModel extends BaseViewModel {
       showMessage(getString(R.string.error_missing_information));
       return;
     }
+    if (saveInProgress) {
+      // Guards against a double-tap on the save button firing two POSTs/PUTs: without this,
+      // creating a product twice from the same barcode scan would now also link the same
+      // scannedBarcode to two different products, making the barcode permanently ambiguous
+      // (not just an annoying duplicate product like before this feature existed).
+      return;
+    }
+    saveInProgress = true;
 
     Product product = getFilledProduct();
     JSONObject jsonObject = product.getJsonFromProduct(sharedPrefs, debug, TAG);
@@ -255,12 +670,14 @@ public class MasterProductViewModel extends BaseViewModel {
           grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, product.getId()),
           jsonObject,
           response -> {
+            saveInProgress = false;
             Bundle bundle = new Bundle();
             bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, product.getId());
             sendEvent(Event.SET_PRODUCT_ID, bundle);
             sendEvent(Event.NAVIGATE_UP);
           },
           error -> {
+            saveInProgress = false;
             showNetworkErrorMessage(error);
             if (debug) {
               Log.e(TAG, "saveProduct: " + error);
@@ -272,6 +689,7 @@ public class MasterProductViewModel extends BaseViewModel {
           grocyApi.getObjects(GrocyApi.ENTITY.PRODUCTS),
           jsonObject,
           response -> {
+            saveInProgress = false;
             int objectId = -1;
             try {
               objectId = response.getInt("created_object_id");
@@ -281,24 +699,53 @@ public class MasterProductViewModel extends BaseViewModel {
                 Log.e(TAG, "saveProduct: " + e);
               }
             }
-            if (withClosing) {
-              if (objectId != -1) {
-                Bundle bundle = new Bundle();
-                bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, objectId);
-                sendEvent(Event.SET_PRODUCT_ID, bundle);
+            handleOffPictureUploadIfNecessary(objectId, product.getPictureFileName());
+            // Resolve the quick packaging/content entry card's confirmed selections (if any)
+            // exactly once here, at save time - only what is checked/filled in the form right
+            // now counts, never raw OFF data on its own (see getShowQuickPackagingEntryLive()/
+            // applyQuickPackagingAndContent() docs).
+            Integer packagingQuId = null;
+            if (objectId != -1 && hasScannedBarcode()) {
+              product.setId(objectId);
+              packagingQuId = resolveQuickQuId(quickPackagingLive.getValue());
+            }
+            Integer finalPackagingQuId = packagingQuId;
+            int finalObjectId = objectId;
+            // Both the barcode link AND the quick packaging/content follow-up writes must finish
+            // BEFORE navigating away: dlHelper.destroy() (ViewModel#onCleared, e.g. once
+            // NAVIGATE_UP pops this fragment) cancels any still-in-flight request tagged with
+            // this ViewModel's uuid, so firing NAVIGATE_UP while these writes are still pending
+            // could silently drop them, leaving the product half-configured (e.g. a stock unit
+            // change with no matching conversion, or vice versa).
+            Runnable proceedWithBarcodeLinkAndNavigation = () -> {
+              if (withClosing) {
+                if (finalObjectId != -1) {
+                  Bundle bundle = new Bundle();
+                  bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, finalObjectId);
+                  sendEvent(Event.SET_PRODUCT_ID, bundle);
+                }
+                linkScannedBarcodeAndUploadPending(
+                    finalObjectId, finalPackagingQuId, () -> sendEvent(Event.NAVIGATE_UP)
+                );
+              } else {
+                linkScannedBarcodeAndUploadPending(finalObjectId, finalPackagingQuId, () -> {
+                  actionEditLive.setValue(true);
+                  product.setId(finalObjectId);
+                  setCurrentProduct(product);
+                  sendEvent(Event.TRANSACTION_SUCCESS);
+                });
               }
-              uploadBarcodesIfNecessary(objectId, () -> sendEvent(Event.NAVIGATE_UP));
+            };
+            if (packagingQuId != null) {
+              applyQuickPackagingAndContent(
+                  objectId, product, packagingQuId, proceedWithBarcodeLinkAndNavigation
+              );
             } else {
-              int finalObjectId = objectId;
-              uploadBarcodesIfNecessary(objectId, () -> {
-                actionEditLive.setValue(true);
-                product.setId(finalObjectId);
-                setCurrentProduct(product);
-                sendEvent(Event.TRANSACTION_SUCCESS);
-              });
+              proceedWithBarcodeLinkAndNavigation.run();
             }
           },
           error -> {
+            saveInProgress = false;
             showNetworkErrorMessage(error);
             if (debug) {
               Log.e(TAG, "saveProduct: " + error);
@@ -306,6 +753,182 @@ public class MasterProductViewModel extends BaseViewModel {
           }
       );
     }
+  }
+
+  /**
+   * Applies the user's CONFIRMED quick packaging/content selections (from the quick packaging
+   * entry card, visible only for a new, non-cloned product with a scanned barcode) at save time:
+   * sets the product's stock unit to the confirmed content unit and creates the matching Grocy
+   * {@link QuantityUnitConversion} row (purchase unit -> stock unit, factor = content amount).
+   * Never invents anything from raw OFF data alone - only what is checked/filled in the form at
+   * save time counts, exactly as if the user had typed it themselves (see task docs for
+   * getShowQuickPackagingEntryLive()).
+   * <p>
+   * Only Grocy servers >= 4.0 are touched: on older servers the "resolved" conversion lookup
+   * this app uses to turn a purchase amount into a stock amount does not consult a
+   * product-specific conversion the way >= 4.0 does (see QuantityUnitConversionUtil), so creating
+   * one there would silently do nothing useful - the packaging/barcode part (amount + qu_id on
+   * the ProductBarcode) still applies regardless of server version, only the content-unit/
+   * conversion refinement is skipped.
+   * <p>
+   * If the product's stock unit is no longer just the packaging unit or unset when this runs -
+   * i.e. the user manually picked a different one on the (mandatory, for a new product) quantity
+   * unit screen - that explicit manual choice is never overridden, and no conversion pointing at
+   * a unit that is not the actual stock unit is created either (it would never be used for the
+   * purchase-to-stock math and would just be confusing leftover data).
+   * <p>
+   * Always calls {@code onFinished} exactly once, on every exit path (nothing to apply, server
+   * too old, manual override detected, success, or failure) - the caller uses this to sequence
+   * navigation after these writes, since they run on this ViewModel's own DownloadHelper, whose
+   * requests get cancelled by onCleared() once the fragment is popped (see saveProduct()).
+   */
+  private void applyQuickPackagingAndContent(
+      int productId, Product createdProduct, int packagingQuId, Runnable onFinished
+  ) {
+    if (!VersionUtil.isGrocyServerMin400(sharedPrefs)) {
+      onFinished.run();
+      return;
+    }
+    Integer contentQuId = resolveQuickQuId(quickContentUnitLive.getValue());
+    String contentAmountStr = quickContentAmountLive.getValue();
+    boolean validAmount = NumUtil.isStringDouble(contentAmountStr)
+        && NumUtil.toDouble(contentAmountStr) > 0;
+    if (contentQuId == null || !validAmount) {
+      onFinished.run();
+      return;
+    }
+    int currentQuIdStock = createdProduct.getQuIdStockInt();
+    if (currentQuIdStock != -1 && currentQuIdStock != packagingQuId) {
+      // Already set to something other than the packaging unit - either already the content
+      // unit (nothing to do) or a different, manually-chosen unit (must not be overridden).
+      onFinished.run();
+      return;
+    }
+    double contentAmount = NumUtil.toDouble(contentAmountStr);
+    if (currentQuIdStock == contentQuId) {
+      if (packagingQuId != contentQuId) {
+        createQuickQuantityUnitConversion(
+            productId, packagingQuId, contentQuId, contentAmount, onFinished
+        );
+      } else {
+        onFinished.run();
+      }
+      return;
+    }
+    createdProduct.setQuIdStock(contentQuId);
+    JSONObject body = createdProduct.getJsonFromProduct(sharedPrefs, debug, TAG);
+    dlHelper.put(
+        grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, productId),
+        body,
+        response -> {
+          if (packagingQuId != contentQuId) {
+            createQuickQuantityUnitConversion(
+                productId, packagingQuId, contentQuId, contentAmount, onFinished
+            );
+          } else {
+            onFinished.run();
+          }
+        },
+        error -> {
+          if (debug) {
+            Log.w(TAG, "applyQuickPackagingAndContent: failed to set qu_id_stock for product "
+                + productId + ": " + describeVolleyError(error));
+          }
+          showMessage(R.string.msg_quick_packaging_content_failed);
+          onFinished.run();
+        }
+    );
+  }
+
+  private void createQuickQuantityUnitConversion(
+      int productId, int fromQuId, int toQuId, double factor, Runnable onFinished
+  ) {
+    QuantityUnitConversion conversion = new QuantityUnitConversion();
+    conversion.setProductId(String.valueOf(productId));
+    conversion.setFromQuId(fromQuId);
+    conversion.setToQuId(toQuId);
+    conversion.setFactor(factor);
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.QUANTITY_UNIT_CONVERSIONS),
+        conversion.getJsonFromConversion(debug, TAG),
+        response -> onFinished.run(),
+        error -> {
+          if (debug) {
+            Log.w(TAG, "createQuickQuantityUnitConversion: failed for product " + productId
+                + ": " + describeVolleyError(error));
+          }
+          showMessage(R.string.msg_quick_packaging_content_failed);
+          onFinished.run();
+        }
+    );
+  }
+
+  /**
+   * Links the barcode this product was created from (if any) to the newly created product,
+   * before uploading any pending barcodes. Without this, a scanned-but-unknown barcode is never
+   * actually attached to the product created for it, so a repeat scan of the same barcode could
+   * never resolve to it and Grocy's own per-barcode fields (qu_id/amount/shopping_location_id/
+   * last_price/note) would never get a row to be reused from. Only the bare barcode string is
+   * sent, plus - now - amount/qu_id, but ONLY when {@code packagingQuId} was explicitly resolved
+   * from the user's confirmed selection in the quick packaging/content entry card; otherwise
+   * those fields stay null and get filled in later, by the user, through the normal barcode-edit
+   * form or purchase flow, exactly as before this feature existed.
+   */
+  private void linkScannedBarcodeAndUploadPending(
+      int productId, @Nullable Integer packagingQuId, Runnable onFinished
+  ) {
+    if (productId < 0 || isBlank(scannedBarcode) || isAlreadyCoveredByPendingBarcode()) {
+      uploadBarcodesIfNecessary(productId, onFinished);
+      return;
+    }
+    // Never blindly create a second row for a barcode Grocy already knows about (it enforces
+    // barcode uniqueness): check the already-loaded barcode list first. If it already belongs to
+    // this exact product, the work is already done. If it belongs to a DIFFERENT product, that
+    // existing assignment is left untouched - it is not ours to reassign or overwrite.
+    ProductBarcode existing = ProductBarcode.getFromBarcode(productBarcodes, scannedBarcode);
+    if (existing != null) {
+      if (debug && existing.getProductIdInt() != productId) {
+        Log.w(TAG, "linkScannedBarcodeAndUploadPending: barcode " + scannedBarcode
+            + " already belongs to product " + existing.getProductIdInt()
+            + ", not linking it to product " + productId);
+      }
+      uploadBarcodesIfNecessary(productId, onFinished);
+      return;
+    }
+    ProductBarcode productBarcode = new ProductBarcode();
+    productBarcode.setProductIdInt(productId);
+    productBarcode.setBarcode(scannedBarcode);
+    if (packagingQuId != null) {
+      productBarcode.setAmount("1");
+      productBarcode.setQuId(String.valueOf(packagingQuId));
+    }
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.PRODUCT_BARCODES),
+        productBarcode.getJsonFromProductBarcode(debug, TAG),
+        response -> uploadBarcodesIfNecessary(productId, onFinished),
+        error -> {
+          // Never blocks the already-successful product save: the product just keeps no
+          // linked barcode, exactly like before this feature existed.
+          if (debug) {
+            Log.w(TAG, "linkScannedBarcodeAndUploadPending: failed to link barcode "
+                + scannedBarcode + " to product " + productId + ": " + describeVolleyError(error));
+          }
+          uploadBarcodesIfNecessary(productId, onFinished);
+        }
+    );
+  }
+
+  private boolean isAlreadyCoveredByPendingBarcode() {
+    List<PendingProductBarcode> pending = pendingProductBarcodesLive.getValue();
+    if (pending == null || scannedBarcode == null) {
+      return false;
+    }
+    for (PendingProductBarcode pendingProductBarcode : pending) {
+      if (scannedBarcode.equals(pendingProductBarcode.getBarcode())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void uploadBarcodesIfNecessary(int productId, Runnable onFinished) {
@@ -333,6 +956,135 @@ public class MasterProductViewModel extends BaseViewModel {
       return;
     }
     queue.start();
+  }
+
+  /**
+   * Downloads the previously looked-up Open Food Facts picture (if any) and stores it as the
+   * real Grocy product picture, but only after the product itself was already created
+   * successfully. This must never block or affect saving the product: it runs fire-and-forget
+   * and any failure (download or upload) is only logged, leaving the product without a picture.
+   * Never guesses a picture: only a validated OFF image URL is used, no search, no fallback
+   * provider. Never overwrites a picture the user already picked manually (camera/clipboard) in
+   * the Optional category before saving.
+   */
+  private void handleOffPictureUploadIfNecessary(int productId, @Nullable String existingPictureFileName) {
+    String imageUrl = offImageUrlLive.getValue();
+    if (productId < 0 || !isBlank(existingPictureFileName) || isDemoInstance()
+        || !isValidOffImageUrl(imageUrl)) {
+      return;
+    }
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    executor.execute(() -> downloadAndUploadOffPicture(executor, productId, imageUrl));
+  }
+
+  private static boolean isValidOffImageUrl(@Nullable String imageUrl) {
+    if (isBlank(imageUrl) || !imageUrl.toLowerCase(Locale.ROOT).startsWith("https://")) {
+      return false;
+    }
+    Uri uri = Uri.parse(imageUrl);
+    return OFF_IMAGE_HOST.equals(uri.getHost());
+  }
+
+  // Runs on a background thread (the caller's single-thread executor). Uses Glide's submit()/
+  // FutureTarget instead of a Target/into(): that keeps the download itself off the main thread
+  // (no Handler hand-off needed) and, unlike a Target callback, guarantees the returned Bitmap
+  // stays valid/unrecycled until we explicitly clear() it below - avoiding a race with Glide's
+  // bitmap pool while it is still being scaled/compressed.
+  private void downloadAndUploadOffPicture(ExecutorService executor, int productId, String imageUrl) {
+    FutureTarget<Bitmap> future = Glide.with(getApplication()).asBitmap().load(imageUrl).submit();
+    byte[] imageArray = null;
+    try {
+      imageArray = PictureUtil.convertBitmapToByteArray(PictureUtil.scaleBitmap(future.get()));
+    } catch (Throwable t) {
+      // Deliberately broad: the remote image is fully attacker/server-controlled (dimensions,
+      // corrupt data, OOM on huge images) and must never be able to crash the app or leave the
+      // executor thread un-shut-down. Product creation already succeeded before this runs, so
+      // the product simply keeps no picture.
+      if (debug) {
+        Log.i(TAG, "downloadAndUploadOffPicture: OFF picture download/scale failed for product "
+            + productId + ": " + t);
+      }
+    } finally {
+      Glide.with(getApplication()).clear(future);
+      executor.shutdown();
+    }
+    if (imageArray != null) {
+      byte[] finalImageArray = imageArray;
+      new Handler(Looper.getMainLooper()).post(() -> uploadOffPicture(productId, finalImageArray));
+    }
+  }
+
+  private void uploadOffPicture(int productId, byte[] imageArray) {
+    // Dedicated, short-lived helper instead of the field dlHelper: its requests must not share
+    // the uuid tag that gets cancelled in onCleared() when this ViewModel is destroyed right
+    // after "save & close" navigates away.
+    DownloadHelper pictureDlHelper = new DownloadHelper(getApplication(), TAG, null, null);
+    String filename = PictureUtil.createImageFilename();
+    pictureDlHelper.putFile(
+        grocyApi.getProductPicture(filename),
+        imageArray,
+        () -> linkOffPictureToProduct(pictureDlHelper, productId, filename),
+        error -> {
+          if (debug) {
+            Log.w(TAG, "uploadOffPicture: OFF picture upload failed: " + error);
+          }
+        }
+    );
+  }
+
+  private void linkOffPictureToProduct(DownloadHelper pictureDlHelper, int productId,
+      String filename) {
+    JSONObject jsonObject = new JSONObject();
+    try {
+      jsonObject.put("picture_file_name", filename);
+    } catch (JSONException e) {
+      if (debug) {
+        Log.w(TAG, "linkOffPictureToProduct: building request failed, deleting orphaned"
+            + " picture " + filename + ": " + e);
+      }
+      deleteOrphanedOffPicture(pictureDlHelper, filename);
+      return;
+    }
+    pictureDlHelper.put(
+        grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, productId),
+        jsonObject,
+        response -> {
+          if (debug) {
+            Log.i(TAG, "linkOffPictureToProduct: linked OFF picture to product " + productId);
+          }
+          // Keep the in-memory product consistent if this ViewModel/session is still alive and
+          // still looking at the same product (e.g. "save" without closing switched to edit
+          // mode) - otherwise a save triggered from the stale local copy would blank the
+          // picture_file_name out again server-side.
+          Product currentProduct = formData.getProductLive().getValue();
+          if (currentProduct != null && currentProduct.getId() == productId) {
+            currentProduct.setPictureFileName(filename);
+          }
+        },
+        error -> {
+          if (debug) {
+            Log.w(TAG, "linkOffPictureToProduct: failed to link OFF picture to product "
+                + productId + ", deleting orphaned picture " + filename + ": " + error);
+          }
+          deleteOrphanedOffPicture(pictureDlHelper, filename);
+        }
+    );
+  }
+
+  // Best-effort cleanup so a failed link step doesn't leave an unreferenced file behind on the
+  // Grocy server forever. Its own failure is only logged: we already logged the original error
+  // that triggered this cleanup, and there is nothing more useful this app can do about it.
+  private void deleteOrphanedOffPicture(DownloadHelper pictureDlHelper, String filename) {
+    pictureDlHelper.delete(
+        grocyApi.getProductPicture(filename),
+        response -> {},
+        error -> {
+          if (debug) {
+            Log.w(TAG, "deleteOrphanedOffPicture: failed to delete orphaned picture "
+                + filename + ": " + error);
+          }
+        }
+    );
   }
 
   public void deleteProduct(int productId) {

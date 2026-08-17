@@ -977,6 +977,70 @@
   <string name="property_energy_only">Energy</string>
   <!-- %1$s is a unit for energy, like kcal (kilo calories) -->
   <string name="property_energy_insert">Energy (%1$s) per stock quantity unit</string>
+  <!-- %1$s is the energy value (kcal) per 100g from an Open Food Facts product preview -->
+  <string name="subtitle_off_energy_100g">%1$s kcal / 100 g</string>
+  <!-- Header of the collapsible card showing additional Open Food Facts data on the product creation form -->
+  <string name="subtitle_off_extra_info">Additional product information</string>
+  <!-- Explains that the collapsible OFF info card is informational only, shown below its header -->
+  <string name="subtitle_off_extra_info_hint">From Open Food Facts, informational only, may be incomplete</string>
+  <string name="property_off_nutrients">Nutrition per 100 g</string>
+  <string name="property_off_fat">Fat</string>
+  <string name="property_off_saturated_fat">of which saturates</string>
+  <string name="property_off_carbohydrates">Carbohydrates</string>
+  <string name="property_off_sugars">of which sugars</string>
+  <string name="property_off_proteins">Protein</string>
+  <string name="property_off_salt">Salt</string>
+  <!-- %1$s is a nutrient name (e.g. "Fat"), %2$s is the amount in grams per 100g -->
+  <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
+  <string name="property_off_ingredients">Ingredients</string>
+  <!-- Explicitly marked as informational, never a safety guarantee -->
+  <string name="property_off_allergens">Allergens (info only, not a safety guarantee)</string>
+  <!-- Shown instead of a missing allergens row, so an empty OFF response never reads as "no allergens" -->
+  <string name="subtitle_off_allergens_no_data">Allergens (info only, not a safety guarantee): no data from Open Food Facts</string>
+  <string name="property_off_nutriscore">Nutri-Score</string>
+  <string name="property_off_origin">Origin</string>
+  <string name="property_off_packaging">Packaging</string>
+  <!-- %1$s is a field label (e.g. "Origin"), %2$s is its value from Open Food Facts -->
+  <string name="subtitle_off_extra_field">%1$s: %2$s</string>
+
+  <!-- Quick packaging/content entry card ("learn once, prefill forever" barcode workflow) -->
+  <string name="title_quick_packaging_entry">Packaging &amp; content</string>
+  <string name="subtitle_quick_packaging_entry">Confirm to remember these for the next scan of this barcode</string>
+  <!-- Canonical German packaging names, intentionally not translated per locale: they must
+       match OffPackagingUtil's canonical German output verbatim so the OFF-detected packaging
+       type can be pre-selected exactly (see OffPackagingUtil / MasterProductViewModel). -->
+  <string name="label_packaging_flasche">Flasche</string>
+  <string name="label_packaging_glas">Glas</string>
+  <string name="label_packaging_dose">Dose</string>
+  <string name="label_packaging_packung">Packung</string>
+  <string name="label_packaging_beutel">Beutel</string>
+  <string name="label_packaging_karton">Karton</string>
+  <string name="label_packaging_schachtel">Schachtel</string>
+  <string name="label_packaging_schale">Schale</string>
+  <string name="label_packaging_becher">Becher</string>
+  <string name="label_packaging_tube">Tube</string>
+  <string name="label_packaging_stueck">Stück</string>
+  <!-- Canonical content unit labels, also not translated: must match OffContentAmountUtil's
+       canonical unit names verbatim ("Stück" is the one exception with no OFF equivalent, added
+       purely as a quick-pick convenience). -->
+  <string name="label_content_unit_g">g</string>
+  <string name="label_content_unit_kg">kg</string>
+  <string name="label_content_unit_mg">mg</string>
+  <string name="label_content_unit_ml">ml</string>
+  <string name="label_content_unit_l">l</string>
+  <string name="label_content_unit_cl">cl</string>
+  <string name="property_quick_content_amount">Content amount</string>
+  <!-- %1$s is the chip label the user selected/typed, e.g. "Flasche" -->
+  <string name="msg_quick_qu_missing">„%1$s“ is not yet a quantity unit.</string>
+  <string name="action_quick_qu_create">Create „%1$s“</string>
+  <string name="msg_quick_packaging_content_failed">The product was saved, but its content amount/unit could not be fully applied. You can set them manually on the quantity unit / conversions screens.</string>
+
+  <!-- "Just this purchase" vs "save as new default" dialog (PurchaseFragment) -->
+  <string name="title_barcode_default_changed">Update remembered default?</string>
+  <string name="msg_barcode_default_changed">You changed the amount or unit from what\'s usually scanned for this barcode. Save this as the new default for next time, or just use it for this purchase?</string>
+  <string name="action_purchase_once">Only use for this purchase</string>
+  <string name="action_save_as_default">Save as new default</string>
+
   <string name="property_active">Active</string>
   <!--The same string is also in the web interface: Product edit form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="property_never_show">Never show on stock overview</string>

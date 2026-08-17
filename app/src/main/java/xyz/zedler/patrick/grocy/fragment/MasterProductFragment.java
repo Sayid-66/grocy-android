@@ -30,6 +30,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.lifecycle.ViewModelProvider;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
@@ -45,6 +47,7 @@ import xyz.zedler.patrick.grocy.model.Product;
 import xyz.zedler.patrick.grocy.model.SnackbarMessage;
 import xyz.zedler.patrick.grocy.util.HapticUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.ResUtil;
 import xyz.zedler.patrick.grocy.viewmodel.MasterProductViewModel;
 
@@ -93,13 +96,39 @@ public class MasterProductFragment extends BaseFragment {
       // remove product name from arguments because it was filled
       // in the form during ViewModel creation
       setArguments(new MasterProductFragmentArgs.Builder(args).setProductName(null)
-          .setProductId(null).build().toBundle());
+          .setProductId(null).setBarcode(null).setOffBrand(null).setOffQuantity(null)
+          .setOffImageUrl(null).setOffEnergyPer100g(null).setOffIngredients(null)
+          .setOffAllergens(null).setOffNutriscore(null).setOffOrigin(null)
+          .setOffNutrients(null).setOffPackagingType(null).build().toBundle());
     }
     binding.setActivity(activity);
     binding.setFormData(viewModel.getFormData());
     binding.setViewModel(viewModel);
     binding.setFragment(this);
     binding.setLifecycleOwner(getViewLifecycleOwner());
+
+    viewModel.getOffImageUrlLive().observe(getViewLifecycleOwner(), imageUrl -> {
+      if (imageUrl != null && !imageUrl.isBlank()) {
+        PictureUtil.loadExternalPicture(binding.imageOffPicture, binding.frameOffPicture, imageUrl);
+      }
+    });
+
+    // Quick packaging/content entry card: plain listener wiring (matches this codebase's
+    // existing preference for listeners over data-binding adapters for chip selection state).
+    binding.chipGroupQuickPackaging.setOnCheckedStateChangeListener(
+        (group, checkedIds) -> viewModel.setQuickPackaging(getCheckedChipLabel(group))
+    );
+    binding.chipGroupQuickContentUnit.setOnCheckedStateChangeListener(
+        (group, checkedIds) -> viewModel.setQuickContentUnit(getCheckedChipLabel(group))
+    );
+    viewModel.getQuickPackagingLive().observe(
+        getViewLifecycleOwner(),
+        label -> setCheckedChipByLabel(binding.chipGroupQuickPackaging, label)
+    );
+    viewModel.getQuickContentUnitLive().observe(
+        getViewLifecycleOwner(),
+        label -> setCheckedChipByLabel(binding.chipGroupQuickContentUnit, label)
+    );
 
     SystemBarBehavior systemBarBehavior = new SystemBarBehavior(activity);
     systemBarBehavior.setAppBar(binding.appBar);
@@ -170,6 +199,21 @@ public class MasterProductFragment extends BaseFragment {
       } else if (event.getType() == Event.SET_PRODUCT_ID) {
         int id = event.getBundle().getInt(Constants.ARGUMENT.PRODUCT_ID);
         setForPreviousDestination(Constants.ARGUMENT.PRODUCT_ID, id);
+        // If this screen was itself given a scanned barcode (i.e. reached via
+        // ChooseProductFragment#createNewProduct, not e.g. its "copy existing product" flow,
+        // which never passes one), MasterProductViewModel already made a best-effort attempt to
+        // link it to the product just created (see linkScannedBarcodeAndUploadPending) and,
+        // by that method's own design, never retries on failure - so this signals ChooseProduct-
+        // Fragment to NOT forward the same barcode further down to a screen that would otherwise
+        // try to link it again and fail on the resulting duplicate, even in the (far more common)
+        // case where the first attempt already succeeded. Read from the ViewModel, not
+        // args.getBarcode(): the argument is cleared right after first being read (see above),
+        // so on a later onViewCreated pass - e.g. after visiting the quantity unit screen, which
+        // a new product requires, and coming back to save - it would already be gone even though
+        // the same ViewModel instance still remembers it.
+        if (viewModel.hasScannedBarcode()) {
+          setForPreviousDestination(ARGUMENT.BARCODE_ALREADY_HANDLED, true);
+        }
         if (NumUtil.isStringInt(args.getPendingProductId())) {
           setForPreviousDestination(
               ARGUMENT.PENDING_PRODUCT_ID,
@@ -335,6 +379,40 @@ public class MasterProductFragment extends BaseFragment {
   public void clearInputFocus() {
     activity.hideKeyboard();
     binding.textInputName.clearFocus();
+  }
+
+  @Nullable
+  private String getCheckedChipLabel(ChipGroup group) {
+    int checkedId = group.getCheckedChipId();
+    if (checkedId == View.NO_ID) {
+      return null;
+    }
+    Chip chip = group.findViewById(checkedId);
+    return chip != null ? chip.getText().toString() : null;
+  }
+
+  private void setCheckedChipByLabel(ChipGroup group, @Nullable String label) {
+    if (label == null) {
+      group.clearCheck();
+      return;
+    }
+    for (int i = 0; i < group.getChildCount(); i++) {
+      View child = group.getChildAt(i);
+      if (child instanceof Chip && label.contentEquals(((Chip) child).getText())) {
+        if (!((Chip) child).isChecked()) {
+          ((Chip) child).setChecked(true);
+        }
+        return;
+      }
+    }
+  }
+
+  public void onQuickPackagingQuCreateClick() {
+    viewModel.createQuickQuantityUnit(viewModel.getQuickPackagingLive().getValue(), qu -> {});
+  }
+
+  public void onQuickContentQuCreateClick() {
+    viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
   }
 
   @Override
