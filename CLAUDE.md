@@ -23,6 +23,12 @@ trotzdem gilt: sauberer, nachvollziehbarer Code, keine Abkürzungen bei Datensic
   (siehe FAQ.md) – Netzwerk-/Auth-Code darf diese Konstellation nicht brechen.
 - Es existiert **kein bestehendes Test-Verzeichnis** (`app/src/test`, `app/src/androidTest`) im Projekt.
   Neue Logik soll trotzdem nach Möglichkeit mit Tests abgesichert werden (siehe unten).
+- **Build-Umgebung (verifiziert):** Build benötigt **Java 21**. Android SDK liegt unter
+  `/usr/lib/android-sdk`; Android Platform 37.0 sowie die benötigten Android Build Tools sind
+  installiert. `./gradlew app:lintDebug` wurde auf dem unveränderten Ausgangsstand erfolgreich
+  ausgeführt – bestehende Lint-/Compiler-Warnungen aus dem Originalprojekt gelten damit als
+  Altlast und dürfen nicht automatisch eigenen Änderungen zugeschrieben werden (nur neu
+  hinzukommende Warnungen sind im Rahmen einer Aufgabe relevant).
 
 ## Grundhaltung
 
@@ -116,6 +122,17 @@ und den zugehörigen Fragmenten zuerst nachvollziehen, bevor Automatisierung erg
    (z. B. Umgang mit Zugangsdaten, SSL/Zertifikatsprüfung im `ssl/`-Paket, Eingabevalidierung).
 8. **Nichts committen oder pushen**, sofern nicht ausdrücklich verlangt. Änderungen bleiben im
    Arbeitsverzeichnis, bis explizit ein Commit/Push gewünscht wird.
+
+## Agent-/Modell-Routing bei Subagent-Einsatz
+
+Wenn Aufgaben an Subagenten delegiert werden, passendes Modell nach Aufwand/Kritikalität wählen:
+
+- **Einfache Recherche** (Datei-/Codesuche, Doku-/API-Nachschlagen, kleine Voranalysen): **Scout**
+  mit Haiku/Low.
+- **Normale Implementierung** (übliche Feature-Umsetzungen, überschaubare Bugfixes/Refactorings im
+  bestehenden Java/MVVM-Stil): **Builder** mit Sonnet/Medium.
+- **Schwierige Bugs, Security-Themen und wichtige Reviews**: **Reviewer** mit Opus/High.
+- **Fable nicht verwenden.**
 
 ## Nicht tun
 
