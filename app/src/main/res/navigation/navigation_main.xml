@@ -804,6 +804,11 @@
         app:nullable="true"
         android:defaultValue="@null" />
       <argument
+        android:name="offBrandFull"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
         android:name="offQuantity"
         app:argType="string"
         app:nullable="true"

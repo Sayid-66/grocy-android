@@ -99,17 +99,20 @@ public class ChooseProductFragment extends BaseFragment
     Object newProductId = getFromThisDestinationNow(ARGUMENT.PRODUCT_ID);
     if (newProductId != null) {  // if user created a new product and navigates back to this fragment this is the new productId
       setForPreviousDestination(Constants.ARGUMENT.PRODUCT_ID, newProductId);
-      // Forward the originally scanned barcode by default, exactly like before this bugfix -
-      // e.g. the "copy existing product" flow (onItemRowClicked below, copy=true) never passes
-      // a barcode to MasterProductViewModel at all, so nothing there ever attempts to link it,
-      // and this forward (letting the screen below, e.g. PurchaseViewModel, link it once the new
-      // product exists) is the only thing that does. Only skip it when MasterProductFragment
-      // explicitly confirms it already had this exact barcode itself and therefore already
-      // attempted the link - forwarding it anyway in that case would make the screen below try
-      // to link the same barcode a second time and fail as a duplicate.
+      // The barcode is always forwarded - e.g. the "copy existing product" flow (onItemRowClicked
+      // below, copy=true) never passes a barcode to MasterProductViewModel at all, so nothing
+      // there ever attempts to link it, and this forward (letting the screen below, e.g.
+      // PurchaseViewModel, link it once the new product exists) is the only thing that does.
+      // BARCODE_ALREADY_HANDLED is forwarded ALONGSIDE it (never used here to suppress the
+      // forward itself) so the screen below can tell the two cases apart: if
+      // MasterProductFragment confirms it already had this exact barcode itself and therefore
+      // already attempted the link, the barcode must only be used there read-only, to prefill
+      // from the already-learned default (see PurchaseViewModel#setProductFromJustLinkedBarcode)
+      // - trying to link it again there too would fail as a duplicate.
       Object barcodeAlreadyHandled = getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED);
-      if (!Boolean.TRUE.equals(barcodeAlreadyHandled)) {
-        setForPreviousDestination(ARGUMENT.BARCODE, barcode);
+      setForPreviousDestination(ARGUMENT.BARCODE, barcode);
+      if (Boolean.TRUE.equals(barcodeAlreadyHandled)) {
+        setForPreviousDestination(ARGUMENT.BARCODE_ALREADY_HANDLED, true);
       }
       setForPreviousDestination(ARGUMENT.BACK_FROM_CHOOSE_PRODUCT_PAGE, true);
       activity.navUtil.navigateUp();
@@ -236,6 +239,7 @@ public class ChooseProductFragment extends BaseFragment
             .setProductName(viewModel.getProductNameLive().getValue())
             .setBarcode(barcode)
             .setOffBrand(viewModel.getOffBrand())
+            .setOffBrandFull(viewModel.getOffBrandFull())
             .setOffQuantity(viewModel.getOffQuantity())
             .setOffImageUrl(viewModel.getOffImageUrl())
             .setOffEnergyPer100g(viewModel.getOffEnergyPer100g())

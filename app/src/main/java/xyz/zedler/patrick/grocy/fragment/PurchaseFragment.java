@@ -218,16 +218,34 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
     });
 
     String barcode = (String) getFromThisDestinationNow(ARGUMENT.BARCODE);
+    // Whether the barcode above was ALREADY linked to its product server-side (e.g. a product
+    // just created from this exact scanned barcode - see
+    // MasterProductViewModel#linkScannedBarcodeAndUploadPending) - if so, it must only be used
+    // read-only, to prefill the purchase form from that already-learned default, never POSTed
+    // again here as if it were still a new, unlinked barcode (see
+    // PurchaseViewModel#setProductFromJustLinkedBarcode). Both consumed unconditionally, right
+    // here, regardless of which branch below ends up using them - never left behind in the
+    // destination state to be misread on some later, unrelated return to this fragment.
+    boolean barcodeAlreadyHandled = Boolean.TRUE.equals(
+        getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED)
+    );
+    removeForThisDestination(ARGUMENT.BARCODE_ALREADY_HANDLED);
     if (barcode != null) {
       removeForThisDestination(Constants.ARGUMENT.BARCODE);
-      viewModel.addBarcodeToExistingProduct(barcode);
+      if (!barcodeAlreadyHandled) {
+        viewModel.addBarcodeToExistingProduct(barcode);
+      }
     }
     Integer productIdSavedSate = (Integer) getFromThisDestinationNow(Constants.ARGUMENT.PRODUCT_ID);
     if (productIdSavedSate != null) {
       removeForThisDestination(Constants.ARGUMENT.PRODUCT_ID);
       viewModel.setProductWillBeFilled(true);
       viewModel.setQueueEmptyAction(() -> {
-        viewModel.setProduct(productIdSavedSate, null, null);
+        if (barcode != null && barcodeAlreadyHandled) {
+          viewModel.setProductFromJustLinkedBarcode(productIdSavedSate, barcode);
+        } else {
+          viewModel.setProduct(productIdSavedSate, null, null);
+        }
         viewModel.setProductWillBeFilled(false);
       });
     } else if (NumUtil.isStringInt(args.getProductId())) {

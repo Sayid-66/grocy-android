@@ -32,6 +32,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.PreferenceManager;
@@ -53,6 +54,7 @@ import xyz.zedler.patrick.grocy.Constants.SETTINGS_DEFAULT;
 import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.api.GrocyApi;
 import xyz.zedler.patrick.grocy.form.FormDataMasterProduct;
+import xyz.zedler.patrick.grocy.form.FormDataMasterProductCatQuantityUnit;
 import xyz.zedler.patrick.grocy.fragment.MasterProductFragmentArgs;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper;
 import xyz.zedler.patrick.grocy.model.Event;
@@ -69,6 +71,7 @@ import xyz.zedler.patrick.grocy.util.NumUtil;
 import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
 import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
+import xyz.zedler.patrick.grocy.util.QuickPackagingSyncUtil;
 import xyz.zedler.patrick.grocy.util.VersionUtil;
 import xyz.zedler.patrick.grocy.web.NetworkQueue;
 
@@ -93,6 +96,7 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<InfoFullscreen> infoFullscreenLive;
   private final MutableLiveData<String> offProductNameLive;
   private final MutableLiveData<String> offBrandLive;
+  private final MutableLiveData<String> offBrandFullLive;
   private final MutableLiveData<String> offQuantityLive;
   private final MutableLiveData<String> offImageUrlLive;
   private final MutableLiveData<String> offEnergyPer100gLive;
@@ -125,7 +129,22 @@ public class MasterProductViewModel extends BaseViewModel {
   private List<ProductBarcode> productBarcodes;
   private List<PendingProductBarcode> pendingProductBarcodes;
   private List<QuantityUnit> quantityUnits;
-  private boolean offPackagingQuantityUnitApplied;
+
+  // Tracks which quantity unit the quick packaging/content entry card itself last applied to
+  // each of these product fields (null = never applied by the quick card yet), so a later
+  // manual choice on the classic quantity unit screen is never silently overridden again - see
+  // syncQuickPackagingToProduct()/QuickPackagingSyncUtil#isQuickOwned().
+  private Integer lastQuickAppliedStockQuId;
+  private Integer lastQuickAppliedPurchaseQuId;
+  private Integer lastQuickAppliedPriceQuId;
+  // The product's own ambient quantity unit preset (e.g. a "default new-product quantity unit"
+  // from Settings) at the exact moment it was constructed, before anything - quick card or user -
+  // could have touched it. Captured once, only for the genuinely-new-product branch these fields
+  // are ever relevant for; see QuickPackagingSyncUtil#isQuickOwned() for why this is needed.
+  private Integer initialPresetStockQuId;
+  private Integer initialPresetPurchaseQuId;
+  private Integer initialPresetPriceQuId;
+  private final Observer<String> quickContentAmountObserver = amount -> syncQuickPackagingToProduct();
 
   private NetworkQueue.QueueItem extraQueueItem;
   private final boolean debug;
@@ -157,6 +176,7 @@ public class MasterProductViewModel extends BaseViewModel {
     infoFullscreenLive = new MutableLiveData<>();
     offProductNameLive = new MutableLiveData<>(args.getProductName());
     offBrandLive = new MutableLiveData<>(args.getOffBrand());
+    offBrandFullLive = new MutableLiveData<>(args.getOffBrandFull());
     offQuantityLive = new MutableLiveData<>(args.getOffQuantity());
     // Validated once, here at the source: both the preview (Glide load in MasterProductFragment)
     // and the later upload (handleOffPictureUploadIfNecessary) read this same LiveData, so an
@@ -185,6 +205,7 @@ public class MasterProductViewModel extends BaseViewModel {
             || !isBlank(offNutriscoreLive.getValue())
             || !isBlank(offOriginLive.getValue())
             || !isBlank(offNutrientsLive.getValue())
+            || !isBlank(offBrandFullLive.getValue())
     );
     offExtraInfoExpandedLive = new MutableLiveData<>(false);
     scannedBarcode = args.getBarcode();
@@ -219,6 +240,13 @@ public class MasterProductViewModel extends BaseViewModel {
     }
     quickPackagingQuMissingLive = new MutableLiveData<>(false);
     quickContentQuMissingLive = new MutableLiveData<>(false);
+    // The content amount field is two-way data-bound directly to the EditText (no dedicated
+    // setter method to hook into like setQuickPackaging()/setQuickContentUnit() below), so this
+    // is the only way to also re-sync the product's quantity units whenever it changes -
+    // observeForever is safe here: both this LiveData and the observer are owned by this same
+    // ViewModel instance (never an external/longer-lived LiveData), and the observer is removed
+    // in onCleared() regardless.
+    quickContentAmountLive.observeForever(quickContentAmountObserver);
 
     if (isActionEdit()) {
       if (args.getProduct() != null) {
@@ -270,6 +298,12 @@ public class MasterProductViewModel extends BaseViewModel {
       } else {
         sendEvent(Event.FOCUS_INVALID_VIEWS);
       }
+      // Captured here, before anything - quick card or user - could have touched these fields:
+      // the product's own ambient quantity unit preset (e.g. a "default new-product quantity
+      // unit" from Settings, or -1 if none configured). See QuickPackagingSyncUtil#isQuickOwned().
+      initialPresetStockQuId = product.getQuIdStockInt();
+      initialPresetPurchaseQuId = product.getQuIdPurchaseInt();
+      initialPresetPriceQuId = product.getQuIdPriceInt();
       setCurrentProduct(product);
     }
   }
@@ -317,71 +351,111 @@ public class MasterProductViewModel extends BaseViewModel {
   }
 
   /**
-   * Prefills stock/purchase/price quantity unit from an OFF-detected packaging type, but only:
-   * - once (guarded), to never fight a value the user picks afterwards on the QU screen,
-   * - for a genuinely new, non-cloned product (never for editing or cloning an existing one -
-   *   those already have deliberately chosen units that must never be touched automatically),
-   * - when OFF's packaging detection was unambiguous,
-   * - when Grocy has EXACTLY ONE quantity unit whose name matches the detected type exactly
-   *   (case-insensitive, trimmed on both sides - never fuzzy, never auto-creates a new unit).
-   * The consume unit is intentionally never derived from OFF data (OFF's packaging tags don't
-   * tell us anything about how a product is consumed) - the only exception is when consume is
-   * still completely unset (id -1, i.e. no preset configured): in that one case it is set to the
-   * same detected unit too, mirroring the existing manual cascade in
-   * FormDataMasterProductCatQuantityUnit#selectQuantityUnit(STOCK, ...), which likewise adopts
-   * the new stock unit for purchase/consume/price only while they are still unset. If a preset
-   * quantity unit is configured, consume keeps that preset value even though stock/purchase/price
-   * just changed; that mismatch (no unit conversion between them) is a pre-existing limitation of
-   * the same manual flow, not something introduced here, and is left to the user to resolve on
-   * the quantity unit screen like it already would be after a manual stock change.
-   * Runs as soon as both the product and the quantity units are available; since both are ready
-   * essentially immediately after ViewModel construction (fast local Room reads before the user
-   * can interact), the same race window already accepted by the analogous one-shot
-   * FormDataMasterProductCatQuantityUnit#fillWithProductIfNecessary prefill applies here too. To
-   * avoid that race silently discarding a product name the user already started typing, the
-   * validity re-trigger below is skipped (not the QU prefill itself) if the name no longer
-   * matches what the product was constructed with.
+   * Keeps the quick packaging/content entry card and the REAL product quantity unit fields
+   * (quIdStock/quIdPurchase/quIdConsume/quIdPrice) as one single source of truth, instead of two
+   * parallel configurations that could contradict each other (the quick card merely "learning"
+   * something while the classic quantity unit screen still shows "nothing selected", and - worse
+   * - {@link FormDataMasterProduct#isWholeFormValid()} still refusing to save because it only
+   * ever looks at these same product fields). Called whenever anything the quick card's decision
+   * depends on changes: quantityUnits finishing loading, a chip (de)selected, the content amount
+   * typed, or a missing quantity unit created via {@link #createQuickQuantityUnit}.
+   * <p>
+   * Applies only:
+   * - for a genuinely new, non-cloned product with the quick card actually showing (see
+   *   {@link #getShowQuickPackagingEntryLive()}) - never for editing/cloning, which already have
+   *   deliberately chosen units that must never be touched automatically,
+   * - the PURCHASE and PRICE unit are set to the confirmed PACKAGING unit (e.g. "Flasche") -
+   *   never the content unit: what you buy/pay for is one bottle, not "250 ml" (see task docs,
+   *   "keine doppelte Mengeneingabe"),
+   * - the STOCK unit is set to the confirmed CONTENT unit if a valid content amount is also
+   *   present (e.g. "ml"), otherwise it falls back to the packaging unit too - see
+   *   {@link QuickPackagingSyncUtil#resolveEffectiveStockQuId},
+   * - CONSUME is set to the same as stock, but only once, while it is still completely unset
+   *   (id -1) - mirroring the existing manual cascade in
+   *   {@link FormDataMasterProductCatQuantityUnit#selectQuantityUnit(QuantityUnit, Bundle)},
+   * - a field already holding something other than what the quick card itself last applied there
+   *   (or, before it applied anything yet, other than the product's own original ambient preset -
+   *   see {@link QuickPackagingSyncUtil#isQuickOwned}) is NEVER overwritten - i.e. the user picked
+   *   something different on the classic quantity unit screen - so a manual choice is never
+   *   silently reverted by a later quick-card change.
+   * Never creates a new Grocy quantity unit itself and never guesses: only unit ids already
+   * resolved from the user's current, confirmed chip/text selections (see resolveQuickQuId())
+   * are ever applied.
    */
-  private void applyOffPackagingQuantityUnitIfPossible() {
-    if (offPackagingQuantityUnitApplied || isActionEdit() || quantityUnits == null) {
+  private void syncQuickPackagingToProduct() {
+    if (isActionEdit() || quantityUnits == null) {
       return;
     }
-    // Only for a brand-new, non-cloned product - matches the constructor's "new product" branch.
-    if (args.getProduct() != null || NumUtil.isStringInt(args.getProductId())) {
-      offPackagingQuantityUnitApplied = true;
-      return;
-    }
-    String detectedType = offPackagingTypeLive.getValue();
-    if (detectedType != null) {
-      detectedType = detectedType.trim();
-    }
-    if (isBlank(detectedType)) {
-      offPackagingQuantityUnitApplied = true;
-      return;
-    }
-    QuantityUnit match = findUniqueQuantityUnitByName(detectedType);
-    if (match == null) {
-      offPackagingQuantityUnitApplied = true;
+    Boolean showQuickCard = showQuickPackagingEntryLive.getValue();
+    if (showQuickCard == null || !showQuickCard) {
       return;
     }
     Product product = formData.getProductLive().getValue();
     if (product == null) {
-      return; // product not set yet, retry not needed here: loadFromDatabase already runs after construction sets it
+      return;
     }
-    product.setQuIdStock(match.getId());
-    product.setQuIdPurchase(match.getId());
-    product.setQuIdPrice(match.getId());
-    if (product.getQuIdConsumeInt() == -1) {
-      product.setQuIdConsume(match.getId());
+    Integer packagingQuId = resolveQuickQuId(quickPackagingLive.getValue());
+    // Only Grocy servers >= 4.0 support a per-product QuantityUnitConversion (see
+    // applyQuickPackagingAndContent()'s own docs) - on older servers there is only a single
+    // GLOBAL purchase-to-stock factor (qu_factor_purchase_to_stock, left at its default of 1
+    // here), so setting the stock unit to the content unit there, without a matching conversion,
+    // would silently misrepresent "1 Flasche" purchased as "1 ml" in stock. The content unit is
+    // therefore never even resolved on those servers - stock simply stays the packaging unit too,
+    // exactly like before this quick-card feature existed for them.
+    Integer contentQuId = VersionUtil.isGrocyServerMin400(sharedPrefs)
+        ? resolveQuickQuId(quickContentUnitLive.getValue()) : null;
+    Integer effectiveStockQuId = QuickPackagingSyncUtil.resolveEffectiveStockQuId(
+        packagingQuId, contentQuId, quickContentAmountLive.getValue()
+    );
+
+    boolean changed = false;
+    if (packagingQuId != null) {
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdPurchaseInt(), initialPresetPurchaseQuId, lastQuickAppliedPurchaseQuId
+      ) && product.getQuIdPurchaseInt() != packagingQuId) {
+        product.setQuIdPurchase(packagingQuId);
+        changed = true;
+      }
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdPriceInt(), initialPresetPriceQuId, lastQuickAppliedPriceQuId
+      ) && product.getQuIdPriceInt() != packagingQuId) {
+        product.setQuIdPrice(packagingQuId);
+        changed = true;
+      }
+      lastQuickAppliedPurchaseQuId = packagingQuId;
+      lastQuickAppliedPriceQuId = packagingQuId;
     }
-    // Re-trigger dependent validity LiveData (catQuErrorLive etc.), but only if the user hasn't
-    // already typed a different name in the meantime - productLive re-emission would otherwise
-    // also reset the two-way-bound name field back to product.getName().
+    if (effectiveStockQuId != null) {
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdStockInt(), initialPresetStockQuId, lastQuickAppliedStockQuId
+      ) && product.getQuIdStockInt() != effectiveStockQuId) {
+        product.setQuIdStock(effectiveStockQuId);
+        changed = true;
+      }
+      if (product.getQuIdConsumeInt() == -1) {
+        product.setQuIdConsume(effectiveStockQuId);
+        changed = true;
+      }
+      lastQuickAppliedStockQuId = effectiveStockQuId;
+    }
+    if (!changed) {
+      return;
+    }
+    // Sync the name field INTO the product before re-emitting, instead of only conditionally
+    // re-emitting when it already matches: formData.getNameLive() is itself derived FROM
+    // productLive via Transformations.map (see FormDataMasterProduct) and two-way bound to the
+    // name EditText, so re-emitting without this would reset whatever the user already typed
+    // back to the product's own (possibly still empty) name. But skipping the emission instead
+    // whenever the two happen to differ - as an earlier version of this method did - would leave
+    // catQuErrorLive/isWholeFormValid() stale forever the moment the user has typed anything
+    // (e.g. right after OFF returned no name and FOCUS_INVALID_VIEWS opened the keyboard there),
+    // silently reintroducing the exact "can't save without visiting the classic quantity unit
+    // screen" bug this method exists to fix. Syncing first keeps both correct together.
     String currentName = formData.getNameLive().getValue();
-    if (currentName == null || currentName.equals(product.getName())) {
-      formData.getProductLive().setValue(product);
+    if (currentName != null) {
+      product.setName(currentName);
     }
-    offPackagingQuantityUnitApplied = true;
+    formData.getProductLive().setValue(product);
   }
 
   @Nullable
@@ -404,6 +478,10 @@ public class MasterProductViewModel extends BaseViewModel {
 
   public LiveData<String> getOffBrandLive() {
     return offBrandLive;
+  }
+
+  public LiveData<String> getOffBrandFullLive() {
+    return offBrandFullLive;
   }
 
   public LiveData<String> getOffQuantityLive() {
@@ -490,6 +568,7 @@ public class MasterProductViewModel extends BaseViewModel {
   public void setQuickPackaging(@Nullable String name) {
     quickPackagingLive.setValue(name);
     updateQuickQuMissingFlags();
+    syncQuickPackagingToProduct();
   }
 
   /**
@@ -499,6 +578,7 @@ public class MasterProductViewModel extends BaseViewModel {
   public void setQuickContentUnit(@Nullable String name) {
     quickContentUnitLive.setValue(name);
     updateQuickQuMissingFlags();
+    syncQuickPackagingToProduct();
   }
 
   private void updateQuickQuMissingFlags() {
@@ -566,6 +646,10 @@ public class MasterProductViewModel extends BaseViewModel {
           }
           quantityUnits.add(created);
           updateQuickQuMissingFlags();
+          // The newly created unit must be usable immediately: no "refresh master data" step,
+          // no re-navigation - the product's real quantity unit fields (and with them, the
+          // classic quantity unit screen and this form's validity) reflect it right away.
+          syncQuickPackagingToProduct();
           if (onCreated != null) {
             onCreated.accept(created);
           }
@@ -590,7 +674,7 @@ public class MasterProductViewModel extends BaseViewModel {
       this.pendingProductBarcodes = data.getPendingProductBarcodes();
       this.quantityUnits = data.getQuantityUnits();
       updateQuickQuMissingFlags();
-      applyOffPackagingQuantityUnitIfPossible();
+      syncQuickPackagingToProduct();
       formData.getProductNamesLive().setValue(getProductNames(this.products, null));
 
       if (downloadAfterLoading) {
@@ -756,30 +840,36 @@ public class MasterProductViewModel extends BaseViewModel {
   }
 
   /**
-   * Applies the user's CONFIRMED quick packaging/content selections (from the quick packaging
-   * entry card, visible only for a new, non-cloned product with a scanned barcode) at save time:
-   * sets the product's stock unit to the confirmed content unit and creates the matching Grocy
-   * {@link QuantityUnitConversion} row (purchase unit -> stock unit, factor = content amount).
+   * Creates the Grocy {@link QuantityUnitConversion} row (purchase unit -> stock unit, factor =
+   * content amount) for the user's CONFIRMED quick packaging/content selections (from the quick
+   * packaging entry card, visible only for a new, non-cloned product with a scanned barcode).
    * Never invents anything from raw OFF data alone - only what is checked/filled in the form at
    * save time counts, exactly as if the user had typed it themselves (see task docs for
    * getShowQuickPackagingEntryLive()).
+   * <p>
+   * Unlike the very first version of this method, the product's stock unit itself no longer needs
+   * a follow-up PUT here: {@link #syncQuickPackagingToProduct()} already kept it in sync with the
+   * SAME confirmed selections live, in-form, before this product was even created - see that
+   * method's docs - so it is already part of the initial POST body. This only needs to create the
+   * conversion row once the product (and therefore a real product id for it) exists.
    * <p>
    * Only Grocy servers >= 4.0 are touched: on older servers the "resolved" conversion lookup
    * this app uses to turn a purchase amount into a stock amount does not consult a
    * product-specific conversion the way >= 4.0 does (see QuantityUnitConversionUtil), so creating
    * one there would silently do nothing useful - the packaging/barcode part (amount + qu_id on
-   * the ProductBarcode) still applies regardless of server version, only the content-unit/
-   * conversion refinement is skipped.
+   * the ProductBarcode) still applies regardless of server version, only the conversion itself is
+   * skipped.
    * <p>
-   * If the product's stock unit is no longer just the packaging unit or unset when this runs -
-   * i.e. the user manually picked a different one on the (mandatory, for a new product) quantity
-   * unit screen - that explicit manual choice is never overridden, and no conversion pointing at
-   * a unit that is not the actual stock unit is created either (it would never be used for the
-   * purchase-to-stock math and would just be confusing leftover data).
+   * If the product's stock unit is not actually the confirmed content unit when this runs - e.g.
+   * the user manually picked something else on the (mandatory, for a new product) quantity unit
+   * screen after syncQuickPackagingToProduct() already applied it - that explicit manual choice
+   * is never overridden, and no conversion pointing at a unit that is not the actual stock unit is
+   * created either (it would never be used for the purchase-to-stock math and would just be
+   * confusing leftover data).
    * <p>
    * Always calls {@code onFinished} exactly once, on every exit path (nothing to apply, server
    * too old, manual override detected, success, or failure) - the caller uses this to sequence
-   * navigation after these writes, since they run on this ViewModel's own DownloadHelper, whose
+   * navigation after this write, since it runs on this ViewModel's own DownloadHelper, whose
    * requests get cancelled by onCleared() once the fragment is popped (see saveProduct()).
    */
   private void applyQuickPackagingAndContent(
@@ -793,51 +883,19 @@ public class MasterProductViewModel extends BaseViewModel {
     String contentAmountStr = quickContentAmountLive.getValue();
     boolean validAmount = NumUtil.isStringDouble(contentAmountStr)
         && NumUtil.toDouble(contentAmountStr) > 0;
-    if (contentQuId == null || !validAmount) {
+    if (contentQuId == null || !validAmount || packagingQuId == contentQuId) {
       onFinished.run();
       return;
     }
-    int currentQuIdStock = createdProduct.getQuIdStockInt();
-    if (currentQuIdStock != -1 && currentQuIdStock != packagingQuId) {
-      // Already set to something other than the packaging unit - either already the content
-      // unit (nothing to do) or a different, manually-chosen unit (must not be overridden).
+    if (createdProduct.getQuIdStockInt() != contentQuId) {
+      // Not (or no longer) the confirmed content unit - either syncQuickPackagingToProduct()
+      // never resolved it this way, or the user manually overrode it - either way, never create
+      // a conversion pointing at a unit that isn't actually the stock unit.
       onFinished.run();
       return;
     }
     double contentAmount = NumUtil.toDouble(contentAmountStr);
-    if (currentQuIdStock == contentQuId) {
-      if (packagingQuId != contentQuId) {
-        createQuickQuantityUnitConversion(
-            productId, packagingQuId, contentQuId, contentAmount, onFinished
-        );
-      } else {
-        onFinished.run();
-      }
-      return;
-    }
-    createdProduct.setQuIdStock(contentQuId);
-    JSONObject body = createdProduct.getJsonFromProduct(sharedPrefs, debug, TAG);
-    dlHelper.put(
-        grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, productId),
-        body,
-        response -> {
-          if (packagingQuId != contentQuId) {
-            createQuickQuantityUnitConversion(
-                productId, packagingQuId, contentQuId, contentAmount, onFinished
-            );
-          } else {
-            onFinished.run();
-          }
-        },
-        error -> {
-          if (debug) {
-            Log.w(TAG, "applyQuickPackagingAndContent: failed to set qu_id_stock for product "
-                + productId + ": " + describeVolleyError(error));
-          }
-          showMessage(R.string.msg_quick_packaging_content_failed);
-          onFinished.run();
-        }
-    );
+    createQuickQuantityUnitConversion(productId, packagingQuId, contentQuId, contentAmount, onFinished);
   }
 
   private void createQuickQuantityUnitConversion(
@@ -1133,6 +1191,7 @@ public class MasterProductViewModel extends BaseViewModel {
 
   @Override
   protected void onCleared() {
+    quickContentAmountLive.removeObserver(quickContentAmountObserver);
     dlHelper.destroy();
     super.onCleared();
   }

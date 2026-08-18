@@ -467,15 +467,32 @@
                       android:text="@{@string/subtitle_off_extra_field(@string/property_off_nutriscore, viewModel.offNutriscoreLive)}"
                       android:visibility="@{viewModel.offNutriscoreLive != null &amp;&amp; !viewModel.offNutriscoreLive.isBlank() ? View.VISIBLE : View.GONE}" />
 
-                    <TextView
-                      style="@style/Widget.Grocy.TextView.ListItem.Description"
-                      android:layout_marginTop="4dp"
-                      android:text="@{@string/subtitle_off_extra_field(@string/property_off_nutrients, viewModel.offNutrientsLive)}"
-                      android:visibility="@{viewModel.offNutrientsLive != null &amp;&amp; !viewModel.offNutrientsLive.isBlank() ? View.VISIBLE : View.GONE}" />
+                    <!-- Structured per-nutrient block ("Nährwerte pro 100 g" header + one
+                         nutrient per line) instead of one dense joined text line - each missing
+                         individual nutrient is simply omitted (never a misleading 0/-1), see
+                         ChooseProductViewModel#buildOffNutrientsSummary(). -->
+                    <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"
+                      android:orientation="vertical"
+                      android:visibility="@{viewModel.offNutrientsLive != null &amp;&amp; !viewModel.offNutrientsLive.isBlank() ? View.VISIBLE : View.GONE}">
+
+                      <TextView
+                        style="@style/Widget.Grocy.TextView.ListItem.Description"
+                        android:textStyle="bold"
+                        android:text="@string/property_off_nutrients" />
+
+                      <TextView
+                        style="@style/Widget.Grocy.TextView.ListItem.Description"
+                        android:layout_marginTop="2dp"
+                        android:text="@{viewModel.offNutrientsLive}" />
+
+                    </LinearLayout>
 
                     <TextView
                       style="@style/Widget.Grocy.TextView.ListItem.Description"
-                      android:layout_marginTop="4dp"
+                      android:layout_marginTop="8dp"
                       android:text="@{@string/subtitle_off_extra_field(@string/property_off_ingredients, viewModel.offIngredientsLive)}"
                       android:visibility="@{viewModel.offIngredientsLive != null &amp;&amp; !viewModel.offIngredientsLive.isBlank() ? View.VISIBLE : View.GONE}" />
 
@@ -483,14 +500,25 @@
                          allergen list must never read as "confirmed allergen-free". -->
                     <TextView
                       style="@style/Widget.Grocy.TextView.ListItem.Description"
-                      android:layout_marginTop="4dp"
+                      android:layout_marginTop="8dp"
                       android:text="@{viewModel.offAllergensLive != null &amp;&amp; !viewModel.offAllergensLive.isBlank() ? @string/subtitle_off_extra_field(@string/property_off_allergens, viewModel.offAllergensLive) : @string/subtitle_off_allergens_no_data}" />
 
                     <TextView
+                      style="@style/Widget.Grocy.TextView.ListItem.OverLine"
+                      android:layout_marginTop="2dp"
+                      android:text="@string/subtitle_off_allergens_disclaimer" />
+
+                    <TextView
                       style="@style/Widget.Grocy.TextView.ListItem.Description"
-                      android:layout_marginTop="4dp"
+                      android:layout_marginTop="8dp"
                       android:text="@{@string/subtitle_off_extra_field(@string/property_off_origin, viewModel.offOriginLive)}"
                       android:visibility="@{viewModel.offOriginLive != null &amp;&amp; !viewModel.offOriginLive.isBlank() ? View.VISIBLE : View.GONE}" />
+
+                    <TextView
+                      style="@style/Widget.Grocy.TextView.ListItem.Description"
+                      android:layout_marginTop="8dp"
+                      android:text="@{@string/subtitle_off_extra_field(@string/property_off_brand_full, viewModel.offBrandFullLive)}"
+                      android:visibility="@{viewModel.offBrandFullLive != null &amp;&amp; !viewModel.offBrandFullLive.isBlank() ? View.VISIBLE : View.GONE}" />
 
                   </LinearLayout>
 

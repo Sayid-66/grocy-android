@@ -74,6 +74,7 @@ public class ChooseProductViewModel extends BaseViewModel {
   private final boolean pendingProductsActive;
   private String nameFromOnlineSource;
   private String offBrand;
+  private String offBrandFull;
   private String offQuantity;
   private String offImageUrl;
   private String offEnergyPer100g;
@@ -238,7 +239,8 @@ public class ChooseProductViewModel extends BaseViewModel {
             offLookupInProgress = false;
             productNameLive.setValue(product.getLocalizedProductName(getApplication()));
             nameFromOnlineSource = product.getLocalizedProductName(getApplication());
-            offBrand = product.getBrands();
+            offBrand = product.getPrimaryBrand();
+            offBrandFull = product.getOtherBrandsInfo();
             offQuantity = product.getQuantity();
             offImageUrl = product.getImageUrl();
             double energy100g = product.getEnergy100g();
@@ -347,6 +349,11 @@ public class ChooseProductViewModel extends BaseViewModel {
   }
 
   @Nullable
+  public String getOffBrandFull() {
+    return offBrandFull;
+  }
+
+  @Nullable
   public String getOffQuantity() {
     return offQuantity;
   }
@@ -405,7 +412,9 @@ public class ChooseProductViewModel extends BaseViewModel {
     addNutrientPart(parts, R.string.property_off_sugars, product.getSugars100g());
     addNutrientPart(parts, R.string.property_off_proteins, product.getProteins100g());
     addNutrientPart(parts, R.string.property_off_salt, product.getSalt100g());
-    return parts.isEmpty() ? null : String.join(" · ", parts);
+    // One nutrient per line (not " · "-joined): matches the mobile-friendly, structured layout
+    // ("Fett: ...", "davon gesättigte Fettsäuren: ...", ...) instead of one dense text wall.
+    return parts.isEmpty() ? null : String.join("\n", parts);
   }
 
   private void addNutrientPart(List<String> parts, int labelRes, @Nullable Double value) {

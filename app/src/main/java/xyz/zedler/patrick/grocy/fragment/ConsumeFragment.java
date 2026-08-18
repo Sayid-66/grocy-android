@@ -198,9 +198,21 @@ public class ConsumeFragment extends BaseFragment implements BarcodeListener, Ho
       );
     }
     String barcode = (String) getFromThisDestinationNow(ARGUMENT.BARCODE);
+    // Whether this barcode was ALREADY linked to its product server-side (e.g. a product just
+    // created from this exact scanned barcode - see
+    // MasterProductViewModel#linkScannedBarcodeAndUploadPending): if so, it must never be
+    // (re)linked here too - that would POST an already-existing barcode and fail as a duplicate,
+    // aborting whatever the user is trying to do on this screen. See PurchaseFragment for the
+    // analogous, more involved handling (this screen has no barcode-based prefill to apply).
+    boolean barcodeAlreadyHandled = Boolean.TRUE.equals(
+        getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED)
+    );
+    removeForThisDestination(ARGUMENT.BARCODE_ALREADY_HANDLED);
     if (barcode != null) {
       removeForThisDestination(Constants.ARGUMENT.BARCODE);
-      viewModel.addBarcodeToExistingProduct(barcode);
+      if (!barcodeAlreadyHandled) {
+        viewModel.addBarcodeToExistingProduct(barcode);
+      }
     }
 
     backFromChooseProductPage = (Boolean)

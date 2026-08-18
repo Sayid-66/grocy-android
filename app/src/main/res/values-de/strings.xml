@@ -964,6 +964,42 @@
   <string name="property_energy_only">Energie</string>
   <!-- %1$s is a unit for energy, like kcal (kilo calories) -->
   <string name="property_energy_insert">Energie (%1$s) pro Bestandsmengeneinheit</string>
+  <string name="subtitle_off_energy_100g">%1$s kcal / 100 g</string>
+  <string name="subtitle_off_extra_info">Weitere Produktinformationen</string>
+  <string name="subtitle_off_extra_info_hint">Daten von Open Food Facts. Angaben können unvollständig sein.</string>
+  <string name="property_off_nutrients">Nährwerte pro 100 g</string>
+  <string name="property_off_fat">Fett</string>
+  <string name="property_off_saturated_fat">davon gesättigte Fettsäuren</string>
+  <string name="property_off_carbohydrates">Kohlenhydrate</string>
+  <string name="property_off_sugars">davon Zucker</string>
+  <string name="property_off_proteins">Eiweiß</string>
+  <string name="property_off_salt">Salz</string>
+  <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
+  <string name="property_off_ingredients">Zutaten</string>
+  <string name="property_off_allergens">Allergene</string>
+  <string name="subtitle_off_allergens_no_data">Allergene: Keine Angaben von Open Food Facts</string>
+  <string name="subtitle_off_allergens_disclaimer">Allergenangaben dienen nur zur Information und ersetzen nicht die Kennzeichnung auf der Verpackung.</string>
+  <string name="property_off_nutriscore">Nutri-Score</string>
+  <string name="property_off_origin">Herkunft</string>
+  <string name="property_off_packaging">Verpackung</string>
+  <string name="property_off_brand_full">Weitere Markenangaben</string>
+  <string name="subtitle_off_extra_field">%1$s: %2$s</string>
+
+  <!-- Quick packaging/content entry card ("learn once, prefill forever" barcode workflow) -->
+  <string name="title_quick_packaging_entry">Verpackung &amp; Inhalt</string>
+  <string name="subtitle_quick_packaging_entry">Bestätigte Werte werden beim nächsten Scan dieses Barcodes vorausgefüllt.</string>
+  <string name="property_quick_content_amount">Inhaltsmenge</string>
+  <!-- %1$s is the chip label the user selected/typed, e.g. "Flasche" -->
+  <string name="msg_quick_qu_missing">„%1$s“ ist noch nicht als Mengeneinheit vorhanden.</string>
+  <string name="action_quick_qu_create">%1$s anlegen</string>
+  <string name="msg_quick_packaging_content_failed">Das Produkt wurde gespeichert, aber Inhaltsmenge/-einheit konnten nicht vollständig übernommen werden. Du kannst sie manuell auf den Seiten „Mengeneinheiten“ bzw. „Umrechnungen“ nachtragen.</string>
+
+  <!-- "Just this purchase" vs "save as new default" dialog (PurchaseFragment) -->
+  <string name="title_barcode_default_changed">Gespeicherten Standard aktualisieren?</string>
+  <string name="msg_barcode_default_changed">Menge oder Einheit weichen vom bisher für diesen Barcode üblichen Wert ab. Als neuen Standard für nächstes Mal speichern oder nur für diesen Einkauf verwenden?</string>
+  <string name="action_purchase_once">Nur für diesen Einkauf verwenden</string>
+  <string name="action_save_as_default">Als neuen Standard speichern</string>
+
   <string name="property_active">Aktiv</string>
   <!--The same string is also in the web interface: Product edit form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="property_never_show">Nie auf der Bestand-Seite anzeigen</string>

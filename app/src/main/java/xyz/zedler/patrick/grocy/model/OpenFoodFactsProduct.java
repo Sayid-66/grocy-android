@@ -141,6 +141,36 @@ public class OpenFoodFactsProduct {
     return cleanOffText(brands);
   }
 
+  /**
+   * OFF's {@code brands} field is a single free-text field that may list several brand names
+   * separated by commas (e.g. "Ben's Original, Ben's, Mars") - there is no separate structured
+   * {@code brand_owner}/{@code manufacturer} field in the real OFF product API response to fall
+   * back on instead. By OFF taxonomy convention the list is ordered most-specific/primary brand
+   * first, so the first entry is used as the single, compact-preview brand - never guessed beyond
+   * that: the full, unaltered list remains available via {@link #getBrands()} (shown separately,
+   * see the "extra info" section) whenever it actually contains more than this one entry.
+   */
+  @Nullable
+  public String getPrimaryBrand() {
+    String all = getBrands();
+    if (all == null) {
+      return null;
+    }
+    int comma = all.indexOf(',');
+    return comma >= 0 ? all.substring(0, comma).trim() : all;
+  }
+
+  /**
+   * The full, unaltered OFF {@code brands} value, but only if it actually lists more than the
+   * one brand already shown by {@link #getPrimaryBrand()} - null otherwise, so the "further
+   * brand info" row in the extra info section never just repeats the same single brand name.
+   */
+  @Nullable
+  public String getOtherBrandsInfo() {
+    String all = getBrands();
+    return all != null && all.indexOf(',') >= 0 ? all : null;
+  }
+
   @Nullable
   public String getQuantity() {
     return cleanOffText(quantity);

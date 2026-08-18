@@ -452,6 +452,25 @@ public class PurchaseViewModel extends BaseViewModel {
     ).perform(dlHelper.getUuid());
   }
 
+  /**
+   * Like {@link #setProduct(Integer, ProductBarcode, ShoppingListItem)}, but resolves the
+   * {@link ProductBarcode} from an already-known barcode STRING first, looked up in the
+   * already-loaded {@link #barcodes} list - used when returning here right after a product was
+   * newly created FROM a scanned barcode (see
+   * MasterProductViewModel#linkScannedBarcodeAndUploadPending): that barcode was already linked
+   * server-side there, with its confirmed amount/quantity unit if any (e.g. "1 Flasche"), so THIS
+   * call must never attempt to (re)link it again - it only uses it, read-only, to prefill the
+   * purchase form with that already-learned default, exactly like scanning any other
+   * already-known barcode would (see {@link #onBarcodeRecognized}). Without this, the very first
+   * purchase right after creating a product from a scanned barcode would have to re-enter the
+   * amount/quantity unit that was just confirmed a moment ago on the product creation screen.
+   */
+  public void setProductFromJustLinkedBarcode(int productId, @Nullable String barcode) {
+    ProductBarcode productBarcode = barcode != null && barcodes != null
+        ? ProductBarcode.getFromBarcode(barcodes, barcode) : null;
+    setProduct(productId, productBarcode, null);
+  }
+
   public void setPendingProduct(int pendingProductId, PendingProductBarcode barcode) {
     PendingProduct pendingProduct = PendingProduct.getFromId(pendingProducts, pendingProductId);
     if (pendingProduct == null) return;

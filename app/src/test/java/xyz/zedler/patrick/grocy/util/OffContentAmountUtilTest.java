@@ -57,6 +57,27 @@ public class OffContentAmountUtilTest {
   }
 
   @Test
+  public void kilograms_returnsParsed() {
+    ParsedContentAmount result = OffContentAmountUtil.parse("1.5 kg");
+    assertEquals(1.5, result.amount, 0.0001);
+    assertEquals("kg", result.unitName);
+  }
+
+  @Test
+  public void milligrams_returnsParsed() {
+    ParsedContentAmount result = OffContentAmountUtil.parse("500 mg");
+    assertEquals(500.0, result.amount, 0.0001);
+    assertEquals("mg", result.unitName);
+  }
+
+  @Test
+  public void centiliters_returnsParsed() {
+    ParsedContentAmount result = OffContentAmountUtil.parse("70 cl");
+    assertEquals(70.0, result.amount, 0.0001);
+    assertEquals("cl", result.unitName);
+  }
+
+  @Test
   public void multipackWithSpaces_returnsNull() {
     assertNull(OffContentAmountUtil.parse("6 x 330ml"));
   }

@@ -993,13 +993,18 @@
   <!-- %1$s is a nutrient name (e.g. "Fat"), %2$s is the amount in grams per 100g -->
   <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
   <string name="property_off_ingredients">Ingredients</string>
-  <!-- Explicitly marked as informational, never a safety guarantee -->
-  <string name="property_off_allergens">Allergens (info only, not a safety guarantee)</string>
+  <string name="property_off_allergens">Allergens</string>
   <!-- Shown instead of a missing allergens row, so an empty OFF response never reads as "no allergens" -->
-  <string name="subtitle_off_allergens_no_data">Allergens (info only, not a safety guarantee): no data from Open Food Facts</string>
+  <string name="subtitle_off_allergens_no_data">Allergens: no data from Open Food Facts</string>
+  <!-- Always shown alongside the allergens row (with or without data): explicitly never a safety
+       guarantee, only informational, never a substitute for the actual packaging label. -->
+  <string name="subtitle_off_allergens_disclaimer">Allergen information is for reference only and does not replace the label on the packaging.</string>
   <string name="property_off_nutriscore">Nutri-Score</string>
   <string name="property_off_origin">Origin</string>
   <string name="property_off_packaging">Packaging</string>
+  <!-- Shown only when Open Food Facts' brands field lists more than the one primary brand
+       already shown in the compact preview (see OpenFoodFactsProduct#getOtherBrandsInfo()) -->
+  <string name="property_off_brand_full">Other brand names</string>
   <!-- %1$s is a field label (e.g. "Origin"), %2$s is its value from Open Food Facts -->
   <string name="subtitle_off_extra_field">%1$s: %2$s</string>
 

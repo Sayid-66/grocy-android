@@ -96,10 +96,11 @@ public class MasterProductFragment extends BaseFragment {
       // remove product name from arguments because it was filled
       // in the form during ViewModel creation
       setArguments(new MasterProductFragmentArgs.Builder(args).setProductName(null)
-          .setProductId(null).setBarcode(null).setOffBrand(null).setOffQuantity(null)
-          .setOffImageUrl(null).setOffEnergyPer100g(null).setOffIngredients(null)
-          .setOffAllergens(null).setOffNutriscore(null).setOffOrigin(null)
-          .setOffNutrients(null).setOffPackagingType(null).build().toBundle());
+          .setProductId(null).setBarcode(null).setOffBrand(null).setOffBrandFull(null)
+          .setOffQuantity(null).setOffImageUrl(null).setOffEnergyPer100g(null)
+          .setOffIngredients(null).setOffAllergens(null).setOffNutriscore(null)
+          .setOffOrigin(null).setOffNutrients(null).setOffPackagingType(null)
+          .build().toBundle());
     }
     binding.setActivity(activity);
     binding.setFormData(viewModel.getFormData());
