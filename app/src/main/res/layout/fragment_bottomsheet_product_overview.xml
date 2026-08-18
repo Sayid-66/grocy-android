@@ -271,6 +271,109 @@
 
       </androidx.cardview.widget.CardView>
 
+      <!-- "Produktinformationen": OFF-Daten des Produkts (Nährwerte/Zutaten/Allergene/Nutri-Score/
+           Herkunft/Verpackungsmaterial), erneut per Barcode von Open Food Facts abgerufen, da sie
+           nach der Produktanlage sonst nirgendwo mehr einsehbar sind (task docs Abschnitt 14).
+           Rein informativ, nicht blockierend: bleibt unsichtbar, wenn kein Barcode verknüpft ist
+           oder der Abruf fehlschlägt/offline ist - die restliche Ansicht funktioniert immer. -->
+      <LinearLayout
+        android:id="@+id/linear_off_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+          android:id="@+id/linear_off_info_header"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="horizontal"
+          android:gravity="center_vertical"
+          android:clickable="true"
+          android:focusable="true"
+          android:paddingStart="16dp"
+          android:paddingEnd="16dp"
+          android:paddingTop="16dp"
+          android:paddingBottom="8dp">
+
+          <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            style="@style/Widget.Grocy.TextView.LabelLarge"
+            android:textColor="?attr/colorSecondary"
+            android:text="@string/subtitle_off_extra_info" />
+
+          <ImageView
+            android:id="@+id/image_off_info_expand"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_round_expand_more" />
+
+        </LinearLayout>
+
+        <LinearLayout
+          android:id="@+id/linear_off_info_content"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="vertical"
+          android:paddingStart="16dp"
+          android:paddingEnd="16dp"
+          android:paddingBottom="16dp"
+          android:visibility="gone">
+
+          <TextView
+            style="@style/Widget.Grocy.TextView.ListItem.OverLine"
+            android:text="@string/subtitle_off_extra_info_hint" />
+
+          <TextView
+            android:id="@+id/text_off_nutrients"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_ingredients"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_allergens"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_allergens_disclaimer"
+            style="@style/Widget.Grocy.TextView.ListItem.OverLine"
+            android:layout_marginTop="2dp"
+            android:text="@string/subtitle_off_allergens_disclaimer"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_nutriscore"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_origin"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+          <TextView
+            android:id="@+id/text_off_packaging_material"
+            style="@style/Widget.Grocy.TextView.ListItem.Description"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
+        </LinearLayout>
+
+      </LinearLayout>
+
     </LinearLayout>
 
   </androidx.core.widget.NestedScrollView>

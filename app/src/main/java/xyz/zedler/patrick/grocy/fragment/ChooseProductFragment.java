@@ -114,6 +114,15 @@ public class ChooseProductFragment extends BaseFragment
       if (Boolean.TRUE.equals(barcodeAlreadyHandled)) {
         setForPreviousDestination(ARGUMENT.BARCODE_ALREADY_HANDLED, true);
       }
+      // Same forwarding principle as BARCODE_ALREADY_HANDLED above: if MasterProductFragment
+      // already booked the first purchase directly as part of the merged "Dieser Einkauf"
+      // save flow (see MasterProductViewModel#isPurchaseBooked), PurchaseFragment below must
+      // never re-fill/re-offer its own purchase form for the same barcode - that would let the
+      // user book the exact same delivery a second time.
+      Object purchaseAlreadyBooked = getFromThisDestinationNow(ARGUMENT.PURCHASE_ALREADY_BOOKED);
+      if (Boolean.TRUE.equals(purchaseAlreadyBooked)) {
+        setForPreviousDestination(ARGUMENT.PURCHASE_ALREADY_BOOKED, true);
+      }
       setForPreviousDestination(ARGUMENT.BACK_FROM_CHOOSE_PRODUCT_PAGE, true);
       activity.navUtil.navigateUp();
       return;
@@ -234,6 +243,8 @@ public class ChooseProductFragment extends BaseFragment
 
   public void createNewProduct() {
     String barcode = ChooseProductFragmentArgs.fromBundle(requireArguments()).getBarcode();
+    boolean fromPurchase = ChooseProductFragmentArgs.fromBundle(requireArguments())
+        .getFromPurchase();
     navigateDeepLinkHorizontally(R.string.deep_link_masterProductFragment,
         new MasterProductFragmentArgs.Builder(Constants.ACTION.CREATE)
             .setProductName(viewModel.getProductNameLive().getValue())
@@ -249,6 +260,12 @@ public class ChooseProductFragment extends BaseFragment
             .setOffOrigin(viewModel.getOffOrigin())
             .setOffNutrients(viewModel.getOffNutrients())
             .setOffPackagingType(viewModel.getOffPackagingType())
+            .setOffPackagingMaterial(viewModel.getOffPackagingMaterial())
+            .setOffContentAmount(viewModel.getOffContentAmount())
+            .setOffContentUnit(viewModel.getOffContentUnit())
+            .setOffCategoriesTagsJoined(viewModel.getOffCategoriesTagsJoined())
+            .setOffNutritionUnreliable(viewModel.isOffNutritionUnreliable())
+            .setFromPurchase(fromPurchase)
             .build().toBundle());
   }
 

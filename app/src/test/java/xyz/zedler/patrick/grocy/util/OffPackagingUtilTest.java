@@ -154,4 +154,67 @@ public class OffPackagingUtilTest {
     assertEquals("Flasche", OffPackagingUtil.detectPrimaryPackaging(
         List.of("en:pump-bottle"), Collections.emptyList()));
   }
+
+  @Test
+  public void materialGlassAlone_returnsGlas() {
+    // Material detection is independent of shape: a glass bottle's shape is "Flasche" (see
+    // detectPrimaryPackaging tests above), never "Glas" - this method only concerns the
+    // separate material display.
+    assertEquals("Glas",
+        OffPackagingUtil.detectPrimaryMaterial(List.of("en:glass")));
+  }
+
+  @Test
+  public void materialMetalVariants_dedupeToMetall() {
+    assertEquals("Metall",
+        OffPackagingUtil.detectPrimaryMaterial(List.of("en:steel", "en:aluminium")));
+  }
+
+  @Test
+  public void materialCardboardVariants_dedupeToPapierKarton() {
+    assertEquals("Papier/Karton", OffPackagingUtil.detectPrimaryMaterial(
+        List.of("en:cardboard", "en:paperboard")));
+  }
+
+  @Test
+  public void materialCeramic_returnsKeramik() {
+    assertEquals("Keramik", OffPackagingUtil.detectPrimaryMaterial(List.of("en:ceramic")));
+  }
+
+  @Test
+  public void materialPlasticVariants_dedupeToKunststoff() {
+    assertEquals("Kunststoff", OffPackagingUtil.detectPrimaryMaterial(
+        List.of("en:plastic", "en:mixed-plastics")));
+  }
+
+  @Test
+  public void materialWood_returnsHolz() {
+    assertEquals("Holz", OffPackagingUtil.detectPrimaryMaterial(List.of("en:wood")));
+  }
+
+  @Test
+  public void materialContradictoryMultipleTags_returnsNull() {
+    assertNull(OffPackagingUtil.detectPrimaryMaterial(List.of("en:glass", "en:plastic")));
+  }
+
+  @Test
+  public void materialUnknownIds_returnNull() {
+    assertNull(OffPackagingUtil.detectPrimaryMaterial(List.of("en:unobtainium")));
+  }
+
+  @Test
+  public void materialUnknownIdAlongsideKnown_isIgnoredNotBlocking() {
+    assertEquals("Glas",
+        OffPackagingUtil.detectPrimaryMaterial(List.of("en:glass", "en:unobtainium")));
+  }
+
+  @Test
+  public void materialEmptyList_returnsNull() {
+    assertNull(OffPackagingUtil.detectPrimaryMaterial(Collections.emptyList()));
+  }
+
+  @Test
+  public void materialNonEnPrefixedTag_isIgnored() {
+    assertNull(OffPackagingUtil.detectPrimaryMaterial(List.of("fr:verre")));
+  }
 }

@@ -80,31 +80,40 @@ public final class OffContentAmountUtil {
       return null;
     }
     double amount = NumUtil.toDouble(numberString);
-    String unitToken = matcher.group(2).toLowerCase(Locale.ROOT);
-    String canonicalUnit;
-    switch (unitToken) {
+    String canonicalUnit = canonicalizeUnit(matcher.group(2));
+    if (canonicalUnit == null) {
+      return null; // unknown unit token -> never guess (e.g. "oz", "pcs", "stück")
+    }
+    return new ParsedContentAmount(amount, canonicalUnit);
+  }
+
+  /**
+   * Canonicalizes a raw OFF unit token (e.g. from {@code product_quantity_unit}, which OFF gives
+   * as a bare unit like "g" or "ml" - not the free-text {@code quantity} field) to one of the
+   * canonical unit strings this app's quick packaging card understands, or null if not one of
+   * them ("unknown stays unknown" - never guessed).
+   */
+  @Nullable
+  public static String canonicalizeUnit(@Nullable String unitToken) {
+    if (unitToken == null) {
+      return null;
+    }
+    switch (unitToken.toLowerCase(Locale.ROOT)) {
       case "g":
-        canonicalUnit = "g";
-        break;
+        return "g";
       case "kg":
-        canonicalUnit = "kg";
-        break;
+        return "kg";
       case "mg":
-        canonicalUnit = "mg";
-        break;
+        return "mg";
       case "ml":
-        canonicalUnit = "ml";
-        break;
+        return "ml";
       case "l":
-        canonicalUnit = "l";
-        break;
+        return "l";
       case "cl":
-        canonicalUnit = "cl";
-        break;
+        return "cl";
       default:
         return null; // unknown unit token -> never guess (e.g. "oz", "pcs", "stück")
     }
-    return new ParsedContentAmount(amount, canonicalUnit);
   }
 
   public static final class ParsedContentAmount {
@@ -113,7 +122,7 @@ public final class OffContentAmountUtil {
     @NonNull
     public final String unitName;
 
-    ParsedContentAmount(double amount, @NonNull String unitName) {
+    public ParsedContentAmount(double amount, @NonNull String unitName) {
       this.amount = amount;
       this.unitName = unitName;
     }

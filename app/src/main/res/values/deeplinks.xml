@@ -39,7 +39,7 @@
   <string name="deep_link_choresFragment" translatable="false">grocy://choresFragment?statusFilterId={statusFilterId}</string>
   <string name="deep_link_recipesFragment" translatable="false">grocy://recipesFragment</string>
   <string name="deep_link_aboutFragment" translatable="false">grocy://aboutFragment</string>
-  <string name="deep_link_masterProductFragment" translatable="false">grocy://masterProductFragment?action={action}&amp;productName={productName}&amp;productId={productId}&amp;pendingProductId={pendingProductId}&amp;pendingProductBarcodes={pendingProductBarcodes}&amp;barcode={barcode}&amp;offBrand={offBrand}&amp;offBrandFull={offBrandFull}&amp;offQuantity={offQuantity}&amp;offImageUrl={offImageUrl}&amp;offEnergyPer100g={offEnergyPer100g}&amp;offIngredients={offIngredients}&amp;offAllergens={offAllergens}&amp;offNutriscore={offNutriscore}&amp;offOrigin={offOrigin}&amp;offNutrients={offNutrients}&amp;offPackagingType={offPackagingType}</string>
+  <string name="deep_link_masterProductFragment" translatable="false">grocy://masterProductFragment?action={action}&amp;productName={productName}&amp;productId={productId}&amp;pendingProductId={pendingProductId}&amp;pendingProductBarcodes={pendingProductBarcodes}&amp;barcode={barcode}&amp;offBrand={offBrand}&amp;offBrandFull={offBrandFull}&amp;offQuantity={offQuantity}&amp;offImageUrl={offImageUrl}&amp;offEnergyPer100g={offEnergyPer100g}&amp;offIngredients={offIngredients}&amp;offAllergens={offAllergens}&amp;offNutriscore={offNutriscore}&amp;offOrigin={offOrigin}&amp;offNutrients={offNutrients}&amp;offPackagingType={offPackagingType}&amp;offPackagingMaterial={offPackagingMaterial}&amp;offContentAmount={offContentAmount}&amp;offContentUnit={offContentUnit}&amp;offCategoriesTagsJoined={offCategoriesTagsJoined}&amp;offNutritionUnreliable={offNutritionUnreliable}&amp;fromPurchase={fromPurchase}</string>
   <string name="deep_link_masterDataOverviewFragment" translatable="false">grocy://masterDataOverviewFragment</string>
   <string name="deep_link_storedPurchasesFragment" translatable="false">grocy://storedPurchasesFragment</string>
   <string name="deep_link_stockEntriesFragment" translatable="false">grocy://stockEntriesFragment?productId={productId}</string>
@@ -47,5 +47,5 @@
   <string name="deep_link_recipeEditIngredientListFragment">grocy://masterRecipeEditIngredientListFragment?recipeId={recipeId}</string>
   <string name="deep_link_recipeEditFragment">grocy://recipeEditFragment?action={action}</string>
   <string name="deep_link_mealPlanFragment" translatable="false">grocy://mealPlanFragment</string>
-  <string name="deep_link_chooseProductFragment">grocy://chooseProductFragment?barcode={barcode}&amp;forbidCreateProduct={forbidCreateProduct}&amp;pendingProductsActive={pendingProductsActive}</string>
+  <string name="deep_link_chooseProductFragment">grocy://chooseProductFragment?barcode={barcode}&amp;forbidCreateProduct={forbidCreateProduct}&amp;pendingProductsActive={pendingProductsActive}&amp;fromPurchase={fromPurchase}</string>
 </resources>

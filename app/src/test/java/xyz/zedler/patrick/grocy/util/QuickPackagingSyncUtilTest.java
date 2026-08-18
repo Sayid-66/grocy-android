@@ -20,9 +20,7 @@
 
 package xyz.zedler.patrick.grocy.util;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -68,56 +66,5 @@ public class QuickPackagingSyncUtilTest {
     // classic quantity unit screen - that manual choice must never be overridden again, even if
     // it happens to match the original ambient preset (3).
     assertFalse(QuickPackagingSyncUtil.isQuickOwned(7, 3, 5));
-  }
-
-  // resolveEffectiveStockQuId
-
-  @Test
-  public void packagingAndValidContent_returnsContentUnit() {
-    assertEquals(Integer.valueOf(9), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, 9, "250"));
-  }
-
-  @Test
-  public void onlyPackaging_returnsPackagingUnit() {
-    assertEquals(Integer.valueOf(3), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, null, null));
-  }
-
-  @Test
-  public void contentUnitWithoutAmount_fallsBackToPackagingUnit() {
-    assertEquals(Integer.valueOf(3), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, 9, null));
-  }
-
-  @Test
-  public void contentUnitWithZeroAmount_fallsBackToPackagingUnit() {
-    assertEquals(Integer.valueOf(3), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, 9, "0"));
-  }
-
-  @Test
-  public void contentUnitWithNegativeAmount_fallsBackToPackagingUnit() {
-    assertEquals(Integer.valueOf(3), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, 9, "-5"));
-  }
-
-  @Test
-  public void contentUnitWithNonNumericAmount_fallsBackToPackagingUnit() {
-    assertEquals(Integer.valueOf(3), QuickPackagingSyncUtil.resolveEffectiveStockQuId(3, 9, "abc"));
-  }
-
-  @Test
-  public void nothingResolved_returnsNull() {
-    assertNull(QuickPackagingSyncUtil.resolveEffectiveStockQuId(null, null, null));
-  }
-
-  @Test
-  public void onlyContentUnitResolvedNoPackaging_returnsNullWithoutValidAmount() {
-    assertNull(QuickPackagingSyncUtil.resolveEffectiveStockQuId(null, 9, null));
-  }
-
-  @Test
-  public void onlyContentUnitResolvedWithValidAmountButNoPackaging_returnsNull() {
-    // The stock unit must never diverge to the content unit without a packaging unit also
-    // confirmed: without one there is no "from" side for the QuantityUnitConversion that would
-    // normally tie stock back to purchase/price, which would otherwise leave those pointing at
-    // an unrelated unit with no conversion between them at all ("keine stille Umrechnung").
-    assertNull(QuickPackagingSyncUtil.resolveEffectiveStockQuId(null, 9, "250"));
   }
 }

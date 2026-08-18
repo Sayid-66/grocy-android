@@ -191,7 +191,12 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
         String barcode = event.getBundle().getString(ARGUMENT.BARCODE);
         activity.navUtil.navigate(PurchaseFragmentDirections
             .actionPurchaseFragmentToChooseProductFragment(barcode)
-            .setPendingProductsActive(viewModel.isQuickModeEnabled()));
+            .setPendingProductsActive(viewModel.isQuickModeEnabled())
+            // Lets MasterProductFragment show/merge its own "Dieser Einkauf" section and book
+            // the first purchase directly, instead of coming back here with a filled-but-
+            // unsubmitted purchase form the user would have to confirm a second time - see
+            // MasterProductViewModel#getShowPurchaseSectionLive().
+            .setFromPurchase(true));
       } else if (event.getType() == Event.CONFIRM_FREEZING) {
         new MaterialAlertDialogBuilder(activity, R.style.ThemeOverlay_Grocy_AlertDialog_Caution)
             .setTitle(R.string.title_confirmation)
@@ -230,24 +235,36 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
         getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED)
     );
     removeForThisDestination(ARGUMENT.BARCODE_ALREADY_HANDLED);
+    // Whether MasterProductFragment already booked the first purchase itself, as part of its
+    // merged "Dieser Einkauf" save flow (see MasterProductViewModel#isPurchaseBooked) - if so,
+    // the product already has its first stock entry and this screen must never prefill/offer a
+    // purchase form for it again (that would let the user book the exact same delivery twice).
+    // The success message for that booking was already shown by MasterProductViewModel itself
+    // before navigating away, so nothing more needs to happen here.
+    boolean purchaseAlreadyBooked = Boolean.TRUE.equals(
+        getFromThisDestinationNow(ARGUMENT.PURCHASE_ALREADY_BOOKED)
+    );
+    removeForThisDestination(ARGUMENT.PURCHASE_ALREADY_BOOKED);
     if (barcode != null) {
       removeForThisDestination(Constants.ARGUMENT.BARCODE);
-      if (!barcodeAlreadyHandled) {
+      if (!barcodeAlreadyHandled && !purchaseAlreadyBooked) {
         viewModel.addBarcodeToExistingProduct(barcode);
       }
     }
     Integer productIdSavedSate = (Integer) getFromThisDestinationNow(Constants.ARGUMENT.PRODUCT_ID);
     if (productIdSavedSate != null) {
       removeForThisDestination(Constants.ARGUMENT.PRODUCT_ID);
-      viewModel.setProductWillBeFilled(true);
-      viewModel.setQueueEmptyAction(() -> {
-        if (barcode != null && barcodeAlreadyHandled) {
-          viewModel.setProductFromJustLinkedBarcode(productIdSavedSate, barcode);
-        } else {
-          viewModel.setProduct(productIdSavedSate, null, null);
-        }
-        viewModel.setProductWillBeFilled(false);
-      });
+      if (!purchaseAlreadyBooked) {
+        viewModel.setProductWillBeFilled(true);
+        viewModel.setQueueEmptyAction(() -> {
+          if (barcode != null && barcodeAlreadyHandled) {
+            viewModel.setProductFromJustLinkedBarcode(productIdSavedSate, barcode);
+          } else {
+            viewModel.setProduct(productIdSavedSate, null, null);
+          }
+          viewModel.setProductWillBeFilled(false);
+        });
+      }
     } else if (NumUtil.isStringInt(args.getProductId())) {
       int productId = Integer.parseInt(args.getProductId());
       setArguments(new PurchaseFragmentArgs.Builder(args)
@@ -535,6 +552,14 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
   }
 
   public void focusNextInvalidView() {
+    // Product-dependent fields (amount/due date/...) only became visible - or are about to
+    // become visible right now - as a side effect of formData.productDetailsLive changing (see
+    // the new visibility wrapper around them). Data binding defers that rebind to the next
+    // frame, so without flushing it here first, requestFocus() below could still hit a View
+    // whose parent is GONE at this exact moment and silently do nothing.
+    if (binding != null) {
+      binding.executePendingBindings();
+    }
     View nextView = null;
     if (!viewModel.getFormData().isProductNameValid()) {
       nextView = binding.autoCompletePurchaseProduct;

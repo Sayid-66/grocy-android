@@ -29,6 +29,16 @@ import androidx.annotation.Nullable;
  * possibly-contradicting configurations (quick card vs. classic quantity unit screen). Split out
  * from MasterProductViewModel so this decision logic - which never touches Android/LiveData - can
  * be unit-tested directly.
+ * <p>
+ * Household stock model: for a normal packaged household product, the PACKAGING (e.g. "Flasche")
+ * is the single quantity unit for stock, purchase, consume AND price alike - never a separate
+ * "content" unit (e.g. "ml") split out for stock tracking. A household is not meant to book stock
+ * changes in individual millilitres/grams; "1 Flasche" bought is "1 Flasche" in stock is "1
+ * Flasche" consumed once empty. The confirmed content amount/unit (e.g. "0,5 l") is preserved
+ * separately, only as a {@link xyz.zedler.patrick.grocy.model.QuantityUnitConversion} from the
+ * packaging to the content unit - never as the stock unit itself - so recipes/energy
+ * calculations/future features still know "1 Flasche = 500 ml" without forcing the household to
+ * track stock in millilitres day to day.
  */
 public final class QuickPackagingSyncUtil {
 
@@ -62,38 +72,5 @@ public final class QuickPackagingSyncUtil {
       return currentQuId == lastQuickAppliedQuId;
     }
     return initialPresetQuId != null && currentQuId == initialPresetQuId;
-  }
-
-  /**
-   * The Grocy quantity unit id the product's STOCK unit should be set to, given the quick card's
-   * current (resolved, i.e. already matched to a real Grocy quantity unit - never a raw label)
-   * selections: the confirmed content unit if a PACKAGING unit is ALSO confirmed and a positive
-   * numeric content amount is present (e.g. "250 ml" stock-tracked separately from "1 Flasche"
-   * purchased/consumed), otherwise just the packaging unit itself (which may itself be null, i.e.
-   * nothing confirmed yet at all).
-   * <p>
-   * The stock unit is deliberately never set to the content unit ALONE, without a packaging unit
-   * also confirmed: the whole point of splitting stock from purchase/price is the
-   * {@link xyz.zedler.patrick.grocy.model.QuantityUnitConversion} between them (1 packaging unit
-   * = &lt;content amount&gt; content units) that MasterProductViewModel#applyQuickPackagingAndContent
-   * creates right after - and that conversion itself needs a packaging unit as its "from" side.
-   * Without one, the packaging/purchase/price fields elsewhere would keep pointing at an
-   * unrelated ambient default (or stay unset) while stock silently switched to the content unit
-   * with NO conversion between them at all - i.e. exactly the "keine stille Umrechnung aus
-   * unsicheren Daten" rule this whole feature must never violate. Never guesses: returns null if
-   * nothing is resolved at all.
-   */
-  @Nullable
-  public static Integer resolveEffectiveStockQuId(
-      @Nullable Integer packagingQuId,
-      @Nullable Integer contentQuId,
-      @Nullable String contentAmount
-  ) {
-    boolean validAmount = NumUtil.isStringDouble(contentAmount)
-        && NumUtil.toDouble(contentAmount) > 0;
-    if (packagingQuId != null && contentQuId != null && validAmount) {
-      return contentQuId;
-    }
-    return packagingQuId;
   }
 }

@@ -667,7 +667,7 @@
   <string name="title_shopping_mode">Shopping mode</string>
   <string name="title_batch_mode_shopping_list">Batch mode shopping list</string>
   <string name="title_product_cat_optional">Optional properties</string>
-  <string name="title_product_cat_location">Default location</string>
+  <string name="title_product_cat_location">Storage location</string>
   <!--The same string is also in the web interface: Purchase/Consume form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="title_product_cat_due_date">Due date</string>
   <string name="title_product_cat_amount">Amount</string>
@@ -731,7 +731,7 @@
   <string name="subtitle_feature_disabled">Feature disabled</string>
   <string name="subtitle_date_from_input">Date from input:\n%1$s</string>
   <string name="subtitle_product_amount">Min. stock, Quick consume, Factor, Tare weight handling</string>
-  <string name="subtitle_product_default_location">Location, Store</string>
+  <string name="subtitle_product_default_location">Storage location, Store</string>
   <string name="subtitle_product_due_date">Type, Default days (after opened, freezing, thawing)</string>
   <string name="subtitle_product_optional_properties">State, Parent product, Description, Product group, Energy, Picture</string>
   <string name="subtitle_product_quantity_unit">Stock, Purchase default</string>
@@ -868,6 +868,10 @@
   <string name="property_status">Status</string>
   <string name="property_status_insert">Status:</string>
   <string name="property_amount">Amount</string>
+  <!-- Label for the "how many packages" field in the merged "This purchase" section - deliberately
+       NOT "Amount"/"Quantity" (property_amount), to make clear this counts packages, not their
+       content (e.g. 1 bottle, not its 250 ml content, which is shown separately). -->
+  <string name="title_purchase_package_count">Package count</string>
   <string name="property_amount_insert">Amount: %1$s</string>
   <string name="property_seconds">Seconds</string>
   <!-- %1$s is a number (amount of seconds) -->
@@ -936,14 +940,14 @@
   <!--The same string is also in the web interface: Product edit form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="property_due_days_default_thawing">Default due days after thawing</string>
   <string name="property_day_summary">Summary for day</string>
-  <string name="property_location">Location</string>
-  <string name="property_location_insert">Location: %1$s</string>
-  <string name="property_location_default">Default location</string>
-  <string name="property_location_default_insert">Default location: %1$s</string>
+  <string name="property_location">Storage location</string>
+  <string name="property_location_insert">Storage location: %1$s</string>
+  <string name="property_location_default">Default storage location</string>
+  <string name="property_location_default_insert">Default storage location: %1$s</string>
   <string name="property_location_consume_default">Default consume location</string>
   <string name="property_move_on_open">Move on open</string>
   <string name="property_notes">Notes</string>
-  <string name="property_locations">Locations</string>
+  <string name="property_locations">Storage locations</string>
   <string name="property_store">Store</string>
   <string name="property_store_insert">Store: %1$s</string>
   <string name="property_store_unknown">Unknown store</string>
@@ -977,13 +981,23 @@
   <string name="property_energy_only">Energy</string>
   <!-- %1$s is a unit for energy, like kcal (kilo calories) -->
   <string name="property_energy_insert">Energy (%1$s) per stock quantity unit</string>
-  <!-- %1$s is the energy value (kcal) per 100g from an Open Food Facts product preview -->
-  <string name="subtitle_off_energy_100g">%1$s kcal / 100 g</string>
+  <!-- %1$s is the energy value (kcal), %2$s is the basis label ("100 g" or "100 ml") determined
+       by NutrientBasisUtil from the product's actual content unit - the same basis logic used for
+       the nutrients section below, never a hardcoded "100 g" regardless of liquid/solid. -->
+  <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
+  <!-- Fallback when the content unit (and therefore the basis) is not yet known - shows the value
+       without implying either basis, per NutrientBasisUtil's "never guess" rule. -->
+  <string name="subtitle_off_energy_no_basis">%1$s kcal</string>
+  <string name="label_off_basis_100g">100 g</string>
+  <string name="label_off_basis_100ml">100 ml</string>
   <!-- Header of the collapsible card showing additional Open Food Facts data on the product creation form -->
   <string name="subtitle_off_extra_info">Additional product information</string>
   <!-- Explains that the collapsible OFF info card is informational only, shown below its header -->
   <string name="subtitle_off_extra_info_hint">From Open Food Facts, informational only, may be incomplete</string>
-  <string name="property_off_nutrients">Nutrition per 100 g</string>
+  <!-- Base label only, WITHOUT a hardcoded "per 100 g"/"per 100 ml" - the correct basis is
+       determined at runtime from the product's actual content unit dimension (liquid vs. solid,
+       see NutrientBasisUtil) and appended dynamically in the layout; never assume "100 g". -->
+  <string name="property_off_nutrients">Nutrition</string>
   <string name="property_off_fat">Fat</string>
   <string name="property_off_saturated_fat">of which saturates</string>
   <string name="property_off_carbohydrates">Carbohydrates</string>
@@ -992,6 +1006,10 @@
   <string name="property_off_salt">Salt</string>
   <!-- %1$s is a nutrient name (e.g. "Fat"), %2$s is the amount in grams per 100g -->
   <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
+    <string name="subtitle_off_nutrients_per_100g">per 100 g</string>
+  <string name="subtitle_off_nutrients_per_100ml">per 100 ml</string>
+  <!-- %1$s is the "Nutrition" label, %2$s the basis (e.g. "per 100 ml") -->
+  <string name="subtitle_off_nutrients_with_basis">%1$s (%2$s)</string>
   <string name="property_off_ingredients">Ingredients</string>
   <string name="property_off_allergens">Allergens</string>
   <!-- Shown instead of a missing allergens row, so an empty OFF response never reads as "no allergens" -->
@@ -1002,6 +1020,7 @@
   <string name="property_off_nutriscore">Nutri-Score</string>
   <string name="property_off_origin">Origin</string>
   <string name="property_off_packaging">Packaging</string>
+  <string name="property_off_packaging_material">Material</string>
   <!-- Shown only when Open Food Facts' brands field lists more than the one primary brand
        already shown in the compact preview (see OpenFoodFactsProduct#getOtherBrandsInfo()) -->
   <string name="property_off_brand_full">Other brand names</string>
@@ -1039,6 +1058,17 @@
   <string name="msg_quick_qu_missing">„%1$s“ is not yet a quantity unit.</string>
   <string name="action_quick_qu_create">Create „%1$s“</string>
   <string name="msg_quick_packaging_content_failed">The product was saved, but its content amount/unit could not be fully applied. You can set them manually on the quantity unit / conversions screens.</string>
+  <string name="msg_product_saved_purchase_failed">The product was saved, but the purchase could not be booked. Please try again.</string>
+
+  <!-- "This purchase" merged first-purchase card in MasterProductFragment (creating a new
+       product from a scanned barcode while purchasing) -->
+  <string name="title_this_purchase">This purchase</string>
+  <string name="label_due_date_type_best_before">Best before (MHD)</string>
+  <string name="label_due_date_type_expiration">Expiration date</string>
+  <string name="title_unit_price_packaging">Price per package</string>
+  <string name="title_summary">Summary</string>
+  <string name="title_advanced_settings">Advanced settings</string>
+  <string name="subtitle_advanced_settings">Optional properties, storage location details, due date details, quantity units, amount, barcodes, unit conversions</string>
 
   <!-- "Just this purchase" vs "save as new default" dialog (PurchaseFragment) -->
   <string name="title_barcode_default_changed">Update remembered default?</string>

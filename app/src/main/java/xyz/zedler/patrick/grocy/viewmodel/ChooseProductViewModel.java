@@ -42,6 +42,7 @@ import xyz.zedler.patrick.grocy.model.PendingProduct;
 import xyz.zedler.patrick.grocy.model.Product;
 import xyz.zedler.patrick.grocy.repository.ChooseProductRepository;
 import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
 import xyz.zedler.patrick.grocy.util.SortUtil;
 
@@ -84,6 +85,11 @@ public class ChooseProductViewModel extends BaseViewModel {
   private String offOrigin;
   private String offNutrients;
   private String offPackagingType;
+  private String offPackagingMaterial;
+  private String offContentAmount;
+  private String offContentUnit;
+  private String offCategoriesTagsJoined;
+  private boolean offNutritionUnreliable;
   private boolean offLookupInProgress;
   private final boolean debug;
 
@@ -251,6 +257,18 @@ public class ChooseProductViewModel extends BaseViewModel {
             offOrigin = product.getOriginInfo();
             offNutrients = buildOffNutrientsSummary(product);
             offPackagingType = product.getDetectedPackagingType();
+            offPackagingMaterial = product.getDetectedPackagingMaterial();
+            offNutritionUnreliable = product.hasNutritionDataQualityWarning();
+            OffContentAmountUtil.ParsedContentAmount parsedContentAmount = product.getContentAmount();
+            if (parsedContentAmount != null) {
+              offContentAmount = String.valueOf(parsedContentAmount.amount);
+              offContentUnit = parsedContentAmount.unitName;
+            } else {
+              offContentAmount = null;
+              offContentUnit = null;
+            }
+            offCategoriesTagsJoined = !product.getCategoriesTags().isEmpty()
+                ? String.join(",", product.getCategoriesTags()) : null;
             offHelpText.setValue(getString(R.string.msg_product_name_off));
           },
           error -> OpenBeautyFactsProduct.getOpenBeautyFactsProduct(
@@ -391,6 +409,30 @@ public class ChooseProductViewModel extends BaseViewModel {
   @Nullable
   public String getOffPackagingType() {
     return offPackagingType;
+  }
+
+  @Nullable
+  public String getOffPackagingMaterial() {
+    return offPackagingMaterial;
+  }
+
+  @Nullable
+  public String getOffContentAmount() {
+    return offContentAmount;
+  }
+
+  @Nullable
+  public String getOffContentUnit() {
+    return offContentUnit;
+  }
+
+  @Nullable
+  public String getOffCategoriesTagsJoined() {
+    return offCategoriesTagsJoined;
+  }
+
+  public boolean isOffNutritionUnreliable() {
+    return offNutritionUnreliable;
   }
 
   @Nullable

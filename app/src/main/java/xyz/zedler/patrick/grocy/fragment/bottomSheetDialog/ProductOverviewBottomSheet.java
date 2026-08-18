@@ -57,9 +57,12 @@ import xyz.zedler.patrick.grocy.fragment.MasterProductFragmentArgs;
 import xyz.zedler.patrick.grocy.fragment.ShoppingListItemEditFragmentArgs;
 import xyz.zedler.patrick.grocy.fragment.StockEntriesFragmentArgs;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper;
+import java.util.List;
 import xyz.zedler.patrick.grocy.model.Location;
+import xyz.zedler.patrick.grocy.model.OpenFoodFactsProduct;
 import xyz.zedler.patrick.grocy.model.PriceHistoryEntry;
 import xyz.zedler.patrick.grocy.model.Product;
+import xyz.zedler.patrick.grocy.model.ProductBarcode;
 import xyz.zedler.patrick.grocy.model.ProductDetails;
 import xyz.zedler.patrick.grocy.model.QuantityUnit;
 import xyz.zedler.patrick.grocy.model.StockItem;
@@ -68,6 +71,8 @@ import xyz.zedler.patrick.grocy.model.Store;
 import xyz.zedler.patrick.grocy.util.AmountUtil;
 import xyz.zedler.patrick.grocy.util.DateUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.NutrientBasisUtil;
+import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
 import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.PluralUtil;
 import xyz.zedler.patrick.grocy.util.ResUtil;
@@ -97,6 +102,7 @@ public class ProductOverviewBottomSheet extends BaseBottomSheetDialogFragment {
   private DownloadHelper dlHelper;
   private int maxDecimalPlacesAmount;
   private int decimalPlacesPriceDisplay;
+  private boolean offInfoExpanded;
 
   @Override
   public View onCreateView(
@@ -355,6 +361,12 @@ public class ProductOverviewBottomSheet extends BaseBottomSheetDialogFragment {
     }
 
     hideDisabledFeatures();
+
+    // "Produktinformationen" (task docs section 14): rein informativ, nie blockierend - der Rest
+    // dieser Ansicht funktioniert unverändert, egal ob dieser Abruf gelingt, fehlschlägt oder gar
+    // nicht erst versucht wird (offline).
+    binding.linearOffInfoHeader.setOnClickListener(v -> toggleOffInfoExpanded());
+    loadOffProductInformationIfPossible();
   }
 
   @Override
@@ -716,6 +728,195 @@ public class ProductOverviewBottomSheet extends BaseBottomSheetDialogFragment {
     if (!isFeatureEnabled(PREF.FEATURE_STOCK_LOCATION_TRACKING)) {
       binding.chipTransfer.setVisibility(View.GONE);
     }
+  }
+
+  /**
+   * Re-fetches this product's Open Food Facts information by its own linked barcode(s) and shows
+   * it in a collapsible "Produktinformationen" section (task docs section 14) - the same OFF data
+   * that was already shown once during product creation, but otherwise unreachable afterwards.
+   * Never stores anything new locally (no new persistence layer): always a fresh, non-blocking
+   * re-fetch, exactly like the product creation screen's own OFF lookup. Silently does nothing
+   * (section stays hidden) when offline, when the product has no linked barcode, or when OFF has
+   * no data for it - this view must keep working either way.
+   */
+  private void loadOffProductInformationIfPossible() {
+    boolean openFoodFactsEnabled = sharedPrefs.getBoolean(
+        Constants.SETTINGS.BEHAVIOR.FOOD_FACTS, Constants.SETTINGS_DEFAULT.BEHAVIOR.FOOD_FACTS
+    );
+    if (!activity.isOnline() || !openFoodFactsEnabled) {
+      // Respects the same "Open Food Facts" opt-out this app already honors during product
+      // creation (see BaseViewModel#isOpenFoodFactsEnabled) - a barcode must never be sent to
+      // this third-party service once the user has explicitly disabled it, even just to
+      // re-display information here.
+      return;
+    }
+    dlHelper.get(
+        activity.getGrocyApi().getObjectsEqualValue(
+            GrocyApi.ENTITY.PRODUCT_BARCODES, "product_id", String.valueOf(product.getId())
+        ),
+        response -> {
+          Type listType = new TypeToken<ArrayList<ProductBarcode>>() {}.getType();
+          List<ProductBarcode> barcodes;
+          try {
+            barcodes = dlHelper.gson.fromJson(response, listType);
+          } catch (Exception e) {
+            return; // malformed response -> never blocks the rest of this view
+          }
+          if (barcodes == null || barcodes.isEmpty()) {
+            return;
+          }
+          // Never mixes data from several different barcodes (task docs section 14): only ever
+          // the single, deterministically-first linked barcode is used for the OFF lookup.
+          String barcode = barcodes.get(0).getBarcode();
+          if (barcode == null || barcode.isBlank()) {
+            return;
+          }
+          OpenFoodFactsProduct.getOpenFoodFactsProduct(
+              dlHelper, barcode,
+              offProduct -> populateOffProductInformation(offProduct),
+              error -> {} // OFF has nothing for this barcode - section simply stays hidden
+          );
+        },
+        error -> {} // no barcodes reachable - section simply stays hidden
+    );
+  }
+
+  private void populateOffProductInformation(OpenFoodFactsProduct offProduct) {
+    if (binding == null) {
+      return; // view already destroyed by the time this async response arrived
+    }
+    boolean anyFieldShown = false;
+
+    OffContentAmountUtilResult contentAmount = OffContentAmountUtilResult.from(offProduct);
+    String nutrientsSummary = buildOffNutrientsSummary(offProduct, contentAmount);
+    if (nutrientsSummary != null) {
+      binding.textOffNutrients.setText(nutrientsSummary);
+      binding.textOffNutrients.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    String ingredients = offProduct.getIngredientsText();
+    if (ingredients != null && !ingredients.isBlank()) {
+      binding.textOffIngredients.setText(
+          activity.getString(R.string.subtitle_off_extra_field,
+              activity.getString(R.string.property_off_ingredients), ingredients)
+      );
+      binding.textOffIngredients.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    // Allergens: never derived as "keine Angaben = keine Allergene" (task docs section 14) - if
+    // OFF has nothing, the row is simply left out entirely rather than shown with a false "none".
+    String allergensInfo = offProduct.getAllergensInfo();
+    if (allergensInfo != null && !allergensInfo.isBlank()) {
+      binding.textOffAllergens.setText(
+          activity.getString(R.string.subtitle_off_extra_field,
+              activity.getString(R.string.property_off_allergens), allergensInfo)
+      );
+      binding.textOffAllergens.setVisibility(View.VISIBLE);
+      binding.textOffAllergensDisclaimer.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    String nutriscore = offProduct.getNutriscoreGrade();
+    if (nutriscore != null && !nutriscore.isBlank()) {
+      binding.textOffNutriscore.setText(
+          activity.getString(R.string.subtitle_off_extra_field,
+              activity.getString(R.string.property_off_nutriscore), nutriscore)
+      );
+      binding.textOffNutriscore.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    String origin = offProduct.getOriginInfo();
+    if (origin != null && !origin.isBlank()) {
+      binding.textOffOrigin.setText(
+          activity.getString(R.string.subtitle_off_extra_field,
+              activity.getString(R.string.property_off_origin), origin)
+      );
+      binding.textOffOrigin.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    String packagingMaterial = offProduct.getDetectedPackagingMaterial();
+    if (packagingMaterial != null && !packagingMaterial.isBlank()) {
+      binding.textOffPackagingMaterial.setText(
+          activity.getString(R.string.subtitle_off_extra_field,
+              activity.getString(R.string.property_off_packaging_material), packagingMaterial)
+      );
+      binding.textOffPackagingMaterial.setVisibility(View.VISIBLE);
+      anyFieldShown = true;
+    }
+
+    if (anyFieldShown) {
+      binding.linearOffInfo.setVisibility(View.VISIBLE);
+    }
+  }
+
+  /**
+   * Mirrors ChooseProductViewModel#buildOffNutrientsSummary(), including the correct "pro 100 g"
+   * vs. "pro 100 ml" basis (task docs section 15) - never hardcoded, determined from the same
+   * content amount/unit resolution already used during product creation. Only concatenates
+   * present values with their existing labels, never invents/estimates a missing nutrient.
+   */
+  @Nullable
+  private String buildOffNutrientsSummary(
+      OpenFoodFactsProduct product, OffContentAmountUtilResult contentAmount
+  ) {
+    ArrayList<String> parts = new ArrayList<>();
+    addNutrientPart(parts, R.string.property_off_fat, product.getFat100g());
+    addNutrientPart(parts, R.string.property_off_saturated_fat, product.getSaturatedFat100g());
+    addNutrientPart(parts, R.string.property_off_carbohydrates, product.getCarbohydrates100g());
+    addNutrientPart(parts, R.string.property_off_sugars, product.getSugars100g());
+    addNutrientPart(parts, R.string.property_off_proteins, product.getProteins100g());
+    addNutrientPart(parts, R.string.property_off_salt, product.getSalt100g());
+    if (parts.isEmpty()) {
+      return null;
+    }
+    String basisLabel = contentAmount.basis != null
+        ? (contentAmount.basis == NutrientBasisUtil.Basis.PER_100_ML
+            ? activity.getString(R.string.subtitle_off_nutrients_per_100ml)
+            : activity.getString(R.string.subtitle_off_nutrients_per_100g))
+        : null;
+    String header = basisLabel != null
+        ? activity.getString(R.string.subtitle_off_nutrients_with_basis,
+            activity.getString(R.string.property_off_nutrients), basisLabel)
+        : activity.getString(R.string.property_off_nutrients);
+    return header + "\n" + String.join("\n", parts);
+  }
+
+  private void addNutrientPart(ArrayList<String> parts, int labelRes, @Nullable Double value) {
+    if (value == null) {
+      return;
+    }
+    parts.add(activity.getString(
+        R.string.subtitle_off_nutrient_value, activity.getString(labelRes),
+        NumUtil.trimAmount(value, 1)
+    ));
+  }
+
+  /** Tiny local holder so the basis (g vs. ml) only needs to be resolved once per lookup. */
+  private static final class OffContentAmountUtilResult {
+    @Nullable final NutrientBasisUtil.Basis basis;
+
+    private OffContentAmountUtilResult(@Nullable NutrientBasisUtil.Basis basis) {
+      this.basis = basis;
+    }
+
+    static OffContentAmountUtilResult from(OpenFoodFactsProduct product) {
+      OffContentAmountUtil.ParsedContentAmount contentAmount = product.getContentAmount();
+      NutrientBasisUtil.Basis basis = contentAmount != null
+          ? NutrientBasisUtil.resolve(contentAmount.unitName) : null;
+      return new OffContentAmountUtilResult(basis);
+    }
+  }
+
+  private void toggleOffInfoExpanded() {
+    offInfoExpanded = !offInfoExpanded;
+    binding.linearOffInfoContent.setVisibility(offInfoExpanded ? View.VISIBLE : View.GONE);
+    binding.imageOffInfoExpand.setImageResource(
+        offInfoExpanded ? R.drawable.ic_round_expand_less : R.drawable.ic_round_expand_more
+    );
   }
 
   private boolean hasDetails() {

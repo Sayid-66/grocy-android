@@ -853,6 +853,34 @@
         app:argType="string"
         app:nullable="true"
         android:defaultValue="@null" />
+      <argument
+        android:name="offPackagingMaterial"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offContentAmount"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offContentUnit"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offCategoriesTagsJoined"
+        app:argType="string"
+        app:nullable="true"
+        android:defaultValue="@null" />
+      <argument
+        android:name="offNutritionUnreliable"
+        app:argType="boolean"
+        android:defaultValue="false" />
+      <argument
+        android:name="fromPurchase"
+        app:argType="boolean"
+        android:defaultValue="false" />
     </fragment>
     <fragment
       android:id="@+id/masterProductCatOptionalFragment"
@@ -1086,6 +1114,10 @@
     <argument
       android:defaultValue="false"
       android:name="pendingProductsActive"
+      app:argType="boolean" />
+    <argument
+      android:defaultValue="false"
+      android:name="fromPurchase"
       app:argType="boolean" />
     <deepLink
       android:id="@+id/deepLink19"

@@ -36,6 +36,7 @@ import xyz.zedler.patrick.grocy.api.OpenFoodFactsApi;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper.OnErrorListener;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper.OnObjectResponseListener;
+import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
 import xyz.zedler.patrick.grocy.util.OffPackagingUtil;
 
 public class OpenFoodFactsProduct {
@@ -103,6 +104,26 @@ public class OpenFoodFactsProduct {
   @Nullable
   @SerializedName("packaging_tags")
   private List<String> packagingTags;
+
+  @Nullable
+  @SerializedName("packaging_materials_tags")
+  private List<String> packagingMaterialsTags;
+
+  @Nullable
+  @SerializedName("product_quantity")
+  private Double productQuantity;
+
+  @Nullable
+  @SerializedName("product_quantity_unit")
+  private String productQuantityUnit;
+
+  @Nullable
+  @SerializedName("data_quality_warnings_tags")
+  private List<String> dataQualityWarningsTags;
+
+  @Nullable
+  @SerializedName("data_quality_errors_tags")
+  private List<String> dataQualityErrorsTags;
 
   public void setProductJson(JSONObject productJson) {
     this.productJson = productJson;
@@ -383,6 +404,85 @@ public class OpenFoodFactsProduct {
   @Nullable
   public String getDetectedPackagingType() {
     return OffPackagingUtil.detectPrimaryPackaging(getPackagingShapesTags(), getPackagingTags());
+  }
+
+  @NonNull
+  public List<String> getPackagingMaterialsTags() {
+    return packagingMaterialsTags != null ? packagingMaterialsTags : Collections.emptyList();
+  }
+
+  /**
+   * The single unambiguous primary packaging MATERIAL detected from OFF's structured
+   * {@code packaging_materials_tags} (see {@link OffPackagingUtil#detectPrimaryMaterial}), or
+   * null if OFF's data doesn't allow a confident, unique determination. This is a separate,
+   * purely informational value and is never a substitute for {@link #getDetectedPackagingType()}.
+   */
+  @Nullable
+  public String getDetectedPackagingMaterial() {
+    return OffPackagingUtil.detectPrimaryMaterial(getPackagingMaterialsTags());
+  }
+
+  @NonNull
+  public List<String> getDataQualityWarningsTags() {
+    return dataQualityWarningsTags != null ? dataQualityWarningsTags : Collections.emptyList();
+  }
+
+  @NonNull
+  public List<String> getDataQualityErrorsTags() {
+    return dataQualityErrorsTags != null ? dataQualityErrorsTags : Collections.emptyList();
+  }
+
+  /**
+   * Whether OFF itself flags a nutrition-related data quality problem for this product (real OFF
+   * data_quality taxonomy ids for nutrition issues are consistently prefixed "nutrition-" after
+   * stripping the "en:" language prefix, e.g. "en:nutrition-value-total-over-105",
+   * "en:nutrition-saturated-fat-greater-than-fat" - verified against the real
+   * taxonomies/data_quality.txt in the openfoodfacts-server repo). If true, nutrient values must
+   * be treated as unreliable by callers (still shown informationally, but never auto-applied to a
+   * real Grocy field like Product.calories).
+   */
+  public boolean hasNutritionDataQualityWarning() {
+    for (String tag : getDataQualityWarningsTags()) {
+      if (containsNutritionSubstring(tag)) {
+        return true;
+      }
+    }
+    for (String tag : getDataQualityErrorsTags()) {
+      if (containsNutritionSubstring(tag)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean containsNutritionSubstring(@Nullable String tag) {
+    if (tag == null || tag.isBlank()) {
+      return false;
+    }
+    String value = tag.trim();
+    int colonIndex = value.indexOf(':');
+    if (colonIndex >= 0 && colonIndex < value.length() - 1) {
+      value = value.substring(colonIndex + 1);
+    }
+    return value.toLowerCase(Locale.ROOT).contains("nutrition");
+  }
+
+  /**
+   * The product's content amount/unit, preferring OFF's structured {@code product_quantity} +
+   * {@code product_quantity_unit} fields over the free-text {@code quantity} field when the
+   * structured fields are present and their unit is one {@link OffContentAmountUtil} recognizes -
+   * falls back to parsing the free-text field otherwise. Never guesses: null if neither source
+   * yields an unambiguous result.
+   */
+  @Nullable
+  public OffContentAmountUtil.ParsedContentAmount getContentAmount() {
+    if (productQuantity != null && productQuantity > 0 && productQuantityUnit != null) {
+      String canonicalUnit = OffContentAmountUtil.canonicalizeUnit(productQuantityUnit);
+      if (canonicalUnit != null) {
+        return new OffContentAmountUtil.ParsedContentAmount(productQuantity, canonicalUnit);
+      }
+    }
+    return OffContentAmountUtil.parse(getQuantity());
   }
 
   public static class OpenFoodFactsNutriments {

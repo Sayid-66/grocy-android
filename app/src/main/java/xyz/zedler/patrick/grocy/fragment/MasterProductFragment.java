@@ -20,6 +20,7 @@
 
 package xyz.zedler.patrick.grocy.fragment;
 
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,6 +34,8 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import java.util.ArrayList;
+import java.util.List;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
 import xyz.zedler.patrick.grocy.Constants.ARGUMENT;
@@ -40,11 +43,17 @@ import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.activity.MainActivity;
 import xyz.zedler.patrick.grocy.behavior.SystemBarBehavior;
 import xyz.zedler.patrick.grocy.databinding.FragmentMasterProductBinding;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.LocationsBottomSheet;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.ProductGroupsBottomSheet;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.StoresBottomSheet;
 import xyz.zedler.patrick.grocy.helper.InfoFullscreenHelper;
 import xyz.zedler.patrick.grocy.model.BottomSheetEvent;
 import xyz.zedler.patrick.grocy.model.Event;
+import xyz.zedler.patrick.grocy.model.Location;
 import xyz.zedler.patrick.grocy.model.Product;
+import xyz.zedler.patrick.grocy.model.ProductGroup;
 import xyz.zedler.patrick.grocy.model.SnackbarMessage;
+import xyz.zedler.patrick.grocy.model.Store;
 import xyz.zedler.patrick.grocy.util.HapticUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
 import xyz.zedler.patrick.grocy.util.PictureUtil;
@@ -100,6 +109,8 @@ public class MasterProductFragment extends BaseFragment {
           .setOffQuantity(null).setOffImageUrl(null).setOffEnergyPer100g(null)
           .setOffIngredients(null).setOffAllergens(null).setOffNutriscore(null)
           .setOffOrigin(null).setOffNutrients(null).setOffPackagingType(null)
+          .setOffPackagingMaterial(null).setOffContentAmount(null).setOffContentUnit(null)
+          .setOffCategoriesTagsJoined(null)
           .build().toBundle());
     }
     binding.setActivity(activity);
@@ -130,6 +141,26 @@ public class MasterProductFragment extends BaseFragment {
         getViewLifecycleOwner(),
         label -> setCheckedChipByLabel(binding.chipGroupQuickContentUnit, label)
     );
+
+    // "Dieser Einkauf" section: MHD/Verbrauchsdatum type toggle - same plain-listener pattern as
+    // the quick packaging/content chips above, writing directly into the shared Product object
+    // (see MasterProductViewModel#setPurchaseDueDateType) so the classic Fälligkeitsdatum
+    // sub-screen always reflects the same choice (task docs section U - one single source of
+    // truth), never a second, parallel value.
+    binding.chipGroupPurchaseDueDateType.setOnCheckedStateChangeListener((group, checkedIds) -> {
+      if (checkedIds.isEmpty()) {
+        return;
+      }
+      int type = checkedIds.get(0) == binding.chipDueDateTypeExpiration.getId() ? 2 : 1;
+      viewModel.setPurchaseDueDateType(type);
+    });
+    viewModel.getDueDateTypeLive().observe(getViewLifecycleOwner(), type -> {
+      Chip chip = type != null && type == 2
+          ? binding.chipDueDateTypeExpiration : binding.chipDueDateTypeBestBefore;
+      if (!chip.isChecked()) {
+        chip.setChecked(true);
+      }
+    });
 
     SystemBarBehavior systemBarBehavior = new SystemBarBehavior(activity);
     systemBarBehavior.setAppBar(binding.appBar);
@@ -214,6 +245,13 @@ public class MasterProductFragment extends BaseFragment {
         // the same ViewModel instance still remembers it.
         if (viewModel.hasScannedBarcode()) {
           setForPreviousDestination(ARGUMENT.BARCODE_ALREADY_HANDLED, true);
+        }
+        // Same principle as BARCODE_ALREADY_HANDLED above: if the merged "Dieser Einkauf" section
+        // already booked the first purchase directly (see MasterProductViewModel#isPurchaseBooked),
+        // the screen below (via ChooseProductFragment) must never prefill/offer its own purchase
+        // form for the exact same delivery again.
+        if (viewModel.isPurchaseBooked()) {
+          setForPreviousDestination(ARGUMENT.PURCHASE_ALREADY_BOOKED, true);
         }
         if (NumUtil.isStringInt(args.getPendingProductId())) {
           setForPreviousDestination(
@@ -414,6 +452,138 @@ public class MasterProductFragment extends BaseFragment {
 
   public void onQuickContentQuCreateClick() {
     viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
+  }
+
+  /** Receives the result from {@link MasterProductViewModel#showPurchaseDueDateBottomSheet}. */
+  @Override
+  public void selectDueDate(String dueDate) {
+    viewModel.getPurchaseDueDateLive().setValue(dueDate);
+  }
+
+  public void onRetryPurchaseClick() {
+    viewModel.retryPurchase();
+  }
+
+  // Inline "Produktzuordnung"/"Geschäft" pickers on the main page (task docs section L/N) -
+  // reuse the SAME bottom sheets and result-callback pattern the classic "Optionale
+  // Eigenschaften"/"Standort" sub-screens already use (see MasterProductCatOptionalFragment/
+  // MasterProductCatLocationFragment), but write straight into MasterProductViewModel's own
+  // Product object (setProductGroup()/setLocation()/setStore()) instead of a sub-screen's own
+  // separate FormData instance - never a second data holder for the same field. No inline
+  // "create new" option here (unlike those sub-screens): keeps this addition minimal, creating a
+  // new product group/location/store remains a classic-sub-screen-only action.
+
+  public void showProductGroupBottomSheet() {
+    List<ProductGroup> productGroups = viewModel.getProductGroups();
+    if (productGroups == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.PRODUCT_GROUPS, new ArrayList<>(productGroups));
+    bundle.putBoolean(ARGUMENT.DISPLAY_EMPTY_OPTION, true);
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getProductGroupId())
+        ? Integer.parseInt(product.getProductGroupId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new ProductGroupsBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectProductGroup(ProductGroup productGroup) {
+    viewModel.setProductGroup(productGroup);
+  }
+
+  public void showLocationBottomSheet() {
+    List<Location> locations = viewModel.getLocations();
+    if (locations == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.LOCATIONS, new ArrayList<>(locations));
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getLocationId())
+        ? Integer.parseInt(product.getLocationId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new LocationsBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectLocation(Location location, Bundle args) {
+    viewModel.setLocation(location);
+  }
+
+  public void showStoreBottomSheet() {
+    List<Store> stores = viewModel.getStores();
+    if (stores == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.STORES, new ArrayList<>(stores));
+    bundle.putBoolean(ARGUMENT.DISPLAY_EMPTY_OPTION, true);
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getStoreId())
+        ? Integer.parseInt(product.getStoreId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new StoresBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectStore(Store store) {
+    viewModel.setStore(store);
+  }
+
+  // "Zusammenfassung" card (task docs section N): each row scrolls back up to the corresponding
+  // field on this SAME page instead of opening another screen - nothing more, the field itself
+  // is edited exactly like before, this only changes which part of the page is visible.
+
+  public void scrollToName() {
+    scrollToView(binding.editTextName);
+  }
+
+  public void scrollToPackaging() {
+    scrollToView(binding.chipGroupQuickPackaging);
+  }
+
+  public void scrollToProductGroup() {
+    scrollToView(binding.rowProductGroup);
+  }
+
+  public void scrollToLocation() {
+    scrollToView(binding.rowLocation);
+  }
+
+  public void scrollToPurchaseAmount() {
+    scrollToView(binding.editTextPurchaseAmount);
+  }
+
+  public void scrollToDueDate() {
+    scrollToView(binding.chipGroupPurchaseDueDateType);
+  }
+
+  public void scrollToPrice() {
+    scrollToView(binding.textInputPurchasePrice);
+  }
+
+  public void scrollToStore() {
+    scrollToView(binding.rowStore);
+  }
+
+  private void scrollToView(@Nullable View target) {
+    if (binding == null || target == null) {
+      return;
+    }
+    binding.scroll.post(() -> {
+      if (binding == null) {
+        return;
+      }
+      Rect offsetRect = new Rect();
+      target.getDrawingRect(offsetRect);
+      binding.constraint.offsetDescendantRectToMyCoords(target, offsetRect);
+      binding.scroll.smoothScrollTo(0, offsetRect.top);
+    });
   }
 
   @Override

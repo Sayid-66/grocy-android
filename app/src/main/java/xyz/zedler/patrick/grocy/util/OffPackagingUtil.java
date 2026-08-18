@@ -109,6 +109,33 @@ public final class OffPackagingUtil {
     }
   }
 
+  // OFF packaging_materials taxonomy id (without "en:" prefix) -> canonical German material
+  // name. Verified against the real OFF packaging_materials taxonomy at
+  // github.com/openfoodfacts/openfoodfacts-server, taxonomies/packaging_materials.txt. This is
+  // a SEPARATE concept from PRIMARY_SHAPE_TO_NAME above: a material (e.g. "glass") must never be
+  // interpreted as a packaging *shape* (e.g. a glass bottle is shape "Flasche", material "Glas"
+  // - conflating the two previously caused a glass bottle to be misdetected as shape "Glas"
+  // instead of "Flasche"). detectPrimaryMaterial() below is only ever consulted for the separate,
+  // purely informational material display - never as a source for detectPrimaryPackaging().
+  private static final Map<String, String> MATERIAL_TO_NAME;
+
+  static {
+    Map<String, String> map = new HashMap<>();
+    map.put("glass", "Glas");
+    map.put("metal", "Metall");
+    map.put("steel", "Metall");
+    map.put("aluminium", "Metall");
+    map.put("paper-or-cardboard", "Papier/Karton");
+    map.put("cardboard", "Papier/Karton");
+    map.put("paper", "Papier/Karton");
+    map.put("paperboard", "Papier/Karton");
+    map.put("wood", "Holz");
+    map.put("ceramic", "Keramik");
+    map.put("plastic", "Kunststoff");
+    map.put("mixed-plastics", "Kunststoff");
+    MATERIAL_TO_NAME = Collections.unmodifiableMap(map);
+  }
+
   private OffPackagingUtil() {
   }
 
@@ -148,6 +175,42 @@ public final class OffPackagingUtil {
       // by being present alongside a recognized primary tag, and is never guessed into a type.
     }
     return primaryNamesFound.size() == 1 ? primaryNamesFound.iterator().next() : null;
+  }
+
+  /**
+   * Determines the single, unambiguous primary packaging MATERIAL (e.g. "Glas", "Kunststoff")
+   * from OFF's structured {@code packaging_materials_tags}, or returns null if none, several
+   * different, or only unrecognized tags are present ("unknown stays unknown"). Never guesses
+   * from product name, brand, category or free text - only from the taxonomized material tags.
+   * <p>
+   * This is a purely informational, SEPARATE result from {@link #detectPrimaryPackaging}: a
+   * material (e.g. "glass") is never a packaging shape and must never be used as one - a glass
+   * bottle's shape is "Flasche", not "Glas", even though its material here correctly resolves to
+   * "Glas". Callers must display this value only in a distinct "material" context, never as a
+   * substitute for or fallback into the packaging-shape detection.
+   *
+   * @param packagingMaterialsTags OFF's structured "packaging_materials_tags" field; pass an
+   *     empty list if absent. OFF has no legacy flat fallback field for materials analogous to
+   *     "packaging_tags" for shapes, so none is consulted here.
+   * @return the canonical German material name (e.g. "Glas"), or null if not uniquely
+   *     determinable.
+   */
+  @Nullable
+  public static String detectPrimaryMaterial(@NonNull List<String> packagingMaterialsTags) {
+    Set<String> materialNamesFound = new HashSet<>();
+    for (String rawTag : packagingMaterialsTags) {
+      String id = stripEnPrefix(rawTag);
+      if (id == null) {
+        continue; // not an "en:"-prefixed tag we can interpret -> ignore, never guess
+      }
+      String name = MATERIAL_TO_NAME.get(id);
+      if (name != null) {
+        materialNamesFound.add(name);
+      }
+      // any other unrecognized id is silently ignored: it must never block detection just by
+      // being present alongside a recognized material tag, and is never guessed into a type.
+    }
+    return materialNamesFound.size() == 1 ? materialNamesFound.iterator().next() : null;
   }
 
   @Nullable

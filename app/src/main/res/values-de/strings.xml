@@ -654,7 +654,7 @@
   <string name="title_shopping_mode">Einkaufsmodus</string>
   <string name="title_batch_mode_shopping_list">Einkaufszettel Stapelmodus</string>
   <string name="title_product_cat_optional">Optionale Eigenschaften</string>
-  <string name="title_product_cat_location">Standard-Standort</string>
+  <string name="title_product_cat_location">Lagerstandort</string>
   <!--The same string is also in the web interface: Purchase/Consume form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="title_product_cat_due_date">Fälligkeitsdatum</string>
   <string name="title_product_cat_amount">Menge</string>
@@ -718,7 +718,7 @@
   <string name="subtitle_feature_disabled">Feature deaktiviert</string>
   <string name="subtitle_date_from_input">Datum von der Eingabe:\n%1$s</string>
   <string name="subtitle_product_amount">Mindestbestand, Schnell-Verbrauch, Faktor, Taragewichtsbehandlung</string>
-  <string name="subtitle_product_default_location">Standort, Geschäft</string>
+  <string name="subtitle_product_default_location">Lagerstandort, Geschäft</string>
   <string name="subtitle_product_due_date">Typ, Standard Tage (nach öffnen, einfrieren, auftauen)</string>
   <string name="subtitle_product_optional_properties">Status, Übergeordnetes Produkt, Beschreibung, Produktgruppe, Energie, Bild</string>
   <string name="subtitle_product_quantity_unit">Bestand, Einkauf Standard</string>
@@ -855,6 +855,7 @@
   <string name="property_status">Status</string>
   <string name="property_status_insert">Status:</string>
   <string name="property_amount">Menge</string>
+  <string name="title_purchase_package_count">Anzahl</string>
   <string name="property_amount_insert">Menge: %1$s</string>
   <string name="property_seconds">Sekunden</string>
   <!-- %1$s is a number (amount of seconds) -->
@@ -923,14 +924,14 @@
   <!--The same string is also in the web interface: Product edit form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="property_due_days_default_thawing">Standard-Fälligkeitstage nach dem Auftauen</string>
   <string name="property_day_summary">Zusammenfassung für den Tag</string>
-  <string name="property_location">Standort</string>
-  <string name="property_location_insert">Standort: %1$s</string>
-  <string name="property_location_default">Standard Standort</string>
-  <string name="property_location_default_insert">Standard-Standort: %1$s</string>
+  <string name="property_location">Lagerstandort</string>
+  <string name="property_location_insert">Lagerstandort: %1$s</string>
+  <string name="property_location_default">Standard-Lagerstandort</string>
+  <string name="property_location_default_insert">Standard-Lagerstandort: %1$s</string>
   <string name="property_location_consume_default">Standardverbrauchsstandort</string>
   <string name="property_move_on_open">Beim Öffnen umlagern</string>
   <string name="property_notes">Notizen</string>
-  <string name="property_locations">Standorte</string>
+  <string name="property_locations">Lagerstandorte</string>
   <string name="property_store">Geschäft</string>
   <string name="property_store_insert">Geschäft: %1$s</string>
   <string name="property_store_unknown">Unbekanntes Geschäft</string>
@@ -964,10 +965,13 @@
   <string name="property_energy_only">Energie</string>
   <!-- %1$s is a unit for energy, like kcal (kilo calories) -->
   <string name="property_energy_insert">Energie (%1$s) pro Bestandsmengeneinheit</string>
-  <string name="subtitle_off_energy_100g">%1$s kcal / 100 g</string>
+  <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
+  <string name="subtitle_off_energy_no_basis">%1$s kcal</string>
+  <string name="label_off_basis_100g">100 g</string>
+  <string name="label_off_basis_100ml">100 ml</string>
   <string name="subtitle_off_extra_info">Weitere Produktinformationen</string>
   <string name="subtitle_off_extra_info_hint">Daten von Open Food Facts. Angaben können unvollständig sein.</string>
-  <string name="property_off_nutrients">Nährwerte pro 100 g</string>
+  <string name="property_off_nutrients">Nährwerte</string>
   <string name="property_off_fat">Fett</string>
   <string name="property_off_saturated_fat">davon gesättigte Fettsäuren</string>
   <string name="property_off_carbohydrates">Kohlenhydrate</string>
@@ -975,6 +979,9 @@
   <string name="property_off_proteins">Eiweiß</string>
   <string name="property_off_salt">Salz</string>
   <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
+    <string name="subtitle_off_nutrients_per_100g">pro 100 g</string>
+  <string name="subtitle_off_nutrients_per_100ml">pro 100 ml</string>
+  <string name="subtitle_off_nutrients_with_basis">%1$s (%2$s)</string>
   <string name="property_off_ingredients">Zutaten</string>
   <string name="property_off_allergens">Allergene</string>
   <string name="subtitle_off_allergens_no_data">Allergene: Keine Angaben von Open Food Facts</string>
@@ -982,6 +989,7 @@
   <string name="property_off_nutriscore">Nutri-Score</string>
   <string name="property_off_origin">Herkunft</string>
   <string name="property_off_packaging">Verpackung</string>
+  <string name="property_off_packaging_material">Material</string>
   <string name="property_off_brand_full">Weitere Markenangaben</string>
   <string name="subtitle_off_extra_field">%1$s: %2$s</string>
 
@@ -993,6 +1001,17 @@
   <string name="msg_quick_qu_missing">„%1$s“ ist noch nicht als Mengeneinheit vorhanden.</string>
   <string name="action_quick_qu_create">%1$s anlegen</string>
   <string name="msg_quick_packaging_content_failed">Das Produkt wurde gespeichert, aber Inhaltsmenge/-einheit konnten nicht vollständig übernommen werden. Du kannst sie manuell auf den Seiten „Mengeneinheiten“ bzw. „Umrechnungen“ nachtragen.</string>
+  <string name="msg_product_saved_purchase_failed">Das Produkt wurde gespeichert, aber der Einkauf konnte nicht gebucht werden. Bitte erneut versuchen.</string>
+
+  <!-- "This purchase" merged first-purchase card in MasterProductFragment (creating a new
+       product from a scanned barcode while purchasing) -->
+  <string name="title_this_purchase">Dieser Einkauf</string>
+  <string name="label_due_date_type_best_before">MHD</string>
+  <string name="label_due_date_type_expiration">Verbrauchsdatum</string>
+  <string name="title_unit_price_packaging">Preis pro Verpackung</string>
+  <string name="title_summary">Zusammenfassung</string>
+  <string name="title_advanced_settings">Weitere Einstellungen</string>
+  <string name="subtitle_advanced_settings">Optionale Eigenschaften, Lagerstandort-Details, Fälligkeitsdatum-Details, Mengeneinheiten, Menge, Barcodes, Umrechnungen</string>
 
   <!-- "Just this purchase" vs "save as new default" dialog (PurchaseFragment) -->
   <string name="title_barcode_default_changed">Gespeicherten Standard aktualisieren?</string>

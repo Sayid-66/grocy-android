@@ -135,4 +135,29 @@ public class OffContentAmountUtilTest {
     // Only exactly-3-digit fractional parts are treated as ambiguous thousands grouping.
     assertEquals(1.25, OffContentAmountUtil.parse("1.25 kg").amount, 0.0001);
   }
+
+  @Test
+  public void canonicalizeUnit_recognizedUnits_returnCanonical() {
+    assertEquals("g", OffContentAmountUtil.canonicalizeUnit("g"));
+    assertEquals("kg", OffContentAmountUtil.canonicalizeUnit("kg"));
+    assertEquals("mg", OffContentAmountUtil.canonicalizeUnit("mg"));
+    assertEquals("ml", OffContentAmountUtil.canonicalizeUnit("ml"));
+    assertEquals("l", OffContentAmountUtil.canonicalizeUnit("l"));
+    assertEquals("cl", OffContentAmountUtil.canonicalizeUnit("cl"));
+  }
+
+  @Test
+  public void canonicalizeUnit_caseInsensitive() {
+    assertEquals("ml", OffContentAmountUtil.canonicalizeUnit("ML"));
+  }
+
+  @Test
+  public void canonicalizeUnit_unknownUnit_returnsNull() {
+    assertNull(OffContentAmountUtil.canonicalizeUnit("oz"));
+  }
+
+  @Test
+  public void canonicalizeUnit_null_returnsNull() {
+    assertNull(OffContentAmountUtil.canonicalizeUnit(null));
+  }
 }
