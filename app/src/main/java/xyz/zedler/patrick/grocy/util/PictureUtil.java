@@ -71,6 +71,34 @@ public class PictureUtil {
         }).into(imageView);
   }
 
+  /**
+   * Loads a picture from an external, non-Grocy URL (e.g. Open Food Facts) into the given
+   * ImageView. Unlike {@link #loadPicture(ImageView, CardView, String)} this method does
+   * deliberately NOT attach the user's Grocy authentication headers (via {@link GlideUrl} and
+   * {@link RequestHeaders#getGlideGrocyAuthHeaders}), because the target host is an
+   * unauthenticated third-party server. Sending Grocy credentials to such a host would leak
+   * them. Do not "unify" this with the Grocy picture loading methods above.
+   */
+  public static void loadExternalPicture(ImageView imageView, @Nullable CardView frame, String pictureUrl) {
+    Glide.with(imageView.getContext())
+        .load(pictureUrl)
+        .transition(DrawableTransitionOptions.withCrossFade())
+        .listener(new RequestListener<>() {
+          @Override
+          public boolean onLoadFailed(@Nullable GlideException e, Object model,
+              Target<Drawable> target, boolean isFirstResource) {
+            if (frame != null) frame.setVisibility(View.GONE);
+            return false;
+          }
+          @Override
+          public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target,
+              DataSource dataSource, boolean isFirstResource) {
+            if (frame != null) frame.setVisibility(View.VISIBLE);
+            return false;
+          }
+        }).into(imageView);
+  }
+
   public static void loadPicture(
       ImageView picture,
       @Nullable CardView frame,
