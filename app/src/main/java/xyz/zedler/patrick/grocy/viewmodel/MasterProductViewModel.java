@@ -80,6 +80,7 @@ import xyz.zedler.patrick.grocy.util.NutrientBasisUtil;
 import xyz.zedler.patrick.grocy.util.OffProductGroupUtil;
 import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
+import xyz.zedler.patrick.grocy.util.PurchaseDueDateUtil;
 import xyz.zedler.patrick.grocy.util.PurchasePriceUtil;
 import xyz.zedler.patrick.grocy.util.QuickPackagingSyncUtil;
 import xyz.zedler.patrick.grocy.util.VersionUtil;
@@ -158,6 +159,10 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<String> purchasePriceLive;
   private final MutableLiveData<Boolean> purchaseIsTotalPriceLive;
   private final MutableLiveData<String> purchaseNoteLive;
+  @Nullable private Integer createdProductIdForPurchase;
+  private final MutableLiveData<Boolean> purchaseFailedLive;
+  private boolean purchaseBooked;
+  private boolean purchaseInProgress;
   private final LiveData<Integer> dueDateTypeLive;
   private final LiveData<String> purchaseDueDateTextLive;
   private final LiveData<String> summaryAmountContentLive;
@@ -190,6 +195,7 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<Boolean> actionEditLive;
   private final MasterProductFragmentArgs args;
   private final boolean forceSaveWithClose;
+  private boolean saveInProgress;
 
   public MasterProductViewModel(
       @NonNull Application application,
@@ -250,6 +256,7 @@ public class MasterProductViewModel extends BaseViewModel {
     offNutritionUnreliable = args.getOffNutritionUnreliable();
     offCategoriesTags = !isBlank(args.getOffCategoriesTagsJoined())
         ? Arrays.asList(args.getOffCategoriesTagsJoined().split(",")) : null;
+    purchaseFailedLive = new MutableLiveData<>(false);
     purchaseAmountLive = new MutableLiveData<>();
     purchaseDueDateLive = new MutableLiveData<>();
     purchasePriceLive = new MutableLiveData<>();
@@ -779,6 +786,15 @@ public class MasterProductViewModel extends BaseViewModel {
       showMessage(getString(R.string.error_missing_information));
       return;
     }
+    if (saveInProgress || purchaseInProgress) {
+      return;
+    }
+    if (!isActionEdit() && createdProductIdForPurchase != null
+        && Boolean.TRUE.equals(showPurchaseSectionLive.getValue())) {
+      updateProductThenRetryPurchase();
+      return;
+    }
+    saveInProgress = true;
 
     Product product = getFilledProduct();
     JSONObject jsonObject = product.getJsonFromProduct(sharedPrefs, debug, TAG);
@@ -788,12 +804,14 @@ public class MasterProductViewModel extends BaseViewModel {
           grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, product.getId()),
           jsonObject,
           response -> {
+            saveInProgress = false;
             Bundle bundle = new Bundle();
             bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, product.getId());
             sendEvent(Event.SET_PRODUCT_ID, bundle);
             sendEvent(Event.NAVIGATE_UP);
           },
           error -> {
+            saveInProgress = false;
             showNetworkErrorMessage(error);
             if (debug) {
               Log.e(TAG, "saveProduct: " + error);
@@ -816,45 +834,57 @@ public class MasterProductViewModel extends BaseViewModel {
             }
             handleOffPictureUploadIfNecessary(objectId, product.getPictureFileName());
             Integer packagingQuId = null;
-            if (objectId != -1
-                && Boolean.TRUE.equals(showQuickPackagingEntryLive.getValue())) {
+            if (objectId != -1 && hasScannedBarcode()) {
               product.setId(objectId);
               packagingQuId = resolveQuickQuId(quickPackagingLive.getValue());
             }
             int finalObjectId = objectId;
             Integer finalPackagingQuId = packagingQuId;
+            createdProductIdForPurchase = finalObjectId != -1 ? finalObjectId : null;
+            Runnable finishSave;
             if (withClosing) {
-              if (objectId != -1) {
-                Bundle bundle = new Bundle();
-                bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, objectId);
-                sendEvent(Event.SET_PRODUCT_ID, bundle);
-              }
-              Runnable proceed =
-                  () -> uploadBarcodesIfNecessary(finalObjectId, () -> sendEvent(Event.NAVIGATE_UP));
-              if (finalPackagingQuId != null) {
-                applyQuickPackagingAndContent(
-                    finalObjectId, product, finalPackagingQuId, proceed
-                );
-              } else {
-                proceed.run();
-              }
+              finishSave = () -> {
+                saveInProgress = false;
+                if (finalObjectId != -1) {
+                  Bundle bundle = new Bundle();
+                  bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, finalObjectId);
+                  sendEvent(Event.SET_PRODUCT_ID, bundle);
+                }
+                sendEvent(Event.NAVIGATE_UP);
+              };
             } else {
-              Runnable proceed = () -> uploadBarcodesIfNecessary(finalObjectId, () -> {
+              finishSave = () -> {
+                saveInProgress = false;
                 actionEditLive.setValue(true);
                 product.setId(finalObjectId);
                 setCurrentProduct(product);
                 sendEvent(Event.TRANSACTION_SUCCESS);
-              });
+              };
+            }
+
+            Runnable proceedToPurchase = () -> {
+              if (Boolean.TRUE.equals(showPurchaseSectionLive.getValue())
+                  && finalObjectId != -1 && isPurchaseAmountValid()) {
+                bookPurchase(finalObjectId, finishSave);
+              } else {
+                finishSave.run();
+              }
+            };
+            Runnable proceedToConversion = () -> {
               if (finalPackagingQuId != null) {
                 applyQuickPackagingAndContent(
-                    finalObjectId, product, finalPackagingQuId, proceed
+                    finalObjectId, product, finalPackagingQuId, proceedToPurchase
                 );
               } else {
-                proceed.run();
+                proceedToPurchase.run();
               }
-            }
+            };
+            linkScannedBarcodeAndUploadPending(
+                finalObjectId, finalPackagingQuId, proceedToConversion
+            );
           },
           error -> {
+            saveInProgress = false;
             showNetworkErrorMessage(error);
             if (debug) {
               Log.e(TAG, "saveProduct: " + error);
@@ -908,6 +938,169 @@ public class MasterProductViewModel extends BaseViewModel {
           onFinished.run();
         }
     );
+  }
+
+  private void bookPurchase(int productId, Runnable onFinished) {
+    if (purchaseInProgress || purchaseBooked) {
+      return;
+    }
+    purchaseInProgress = true;
+    dlHelper.postWithArray(
+        grocyApi.purchaseProduct(productId),
+        buildPurchaseJson(),
+        response -> {
+          purchaseInProgress = false;
+          purchaseBooked = true;
+          purchaseFailedLive.setValue(false);
+          onFinished.run();
+        },
+        error -> {
+          purchaseInProgress = false;
+          saveInProgress = false;
+          purchaseFailedLive.setValue(true);
+          showMessage(R.string.msg_product_saved_purchase_failed);
+          if (debug) {
+            Log.w(TAG, "bookPurchase: failed for product " + productId + ": "
+                + describeVolleyError(error));
+          }
+        }
+    );
+  }
+
+  private void updateProductThenRetryPurchase() {
+    Integer productId = createdProductIdForPurchase;
+    if (productId == null) {
+      return;
+    }
+    saveInProgress = true;
+    Product product = getFilledProduct();
+    product.setId(productId);
+    dlHelper.put(
+        grocyApi.getObject(GrocyApi.ENTITY.PRODUCTS, productId),
+        product.getJsonFromProduct(sharedPrefs, debug, TAG),
+        response -> {
+          saveInProgress = false;
+          retryPurchase();
+        },
+        error -> {
+          saveInProgress = false;
+          showNetworkErrorMessage(error);
+          if (debug) {
+            Log.e(TAG, "updateProductThenRetryPurchase: " + error);
+          }
+        }
+    );
+  }
+
+  public void retryPurchase() {
+    Integer productId = createdProductIdForPurchase;
+    if (productId == null || purchaseBooked || saveInProgress || purchaseInProgress) {
+      return;
+    }
+    bookPurchase(productId, () -> {
+      Bundle bundle = new Bundle();
+      bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, productId);
+      sendEvent(Event.SET_PRODUCT_ID, bundle);
+      sendEvent(Event.NAVIGATE_UP);
+    });
+  }
+
+  public boolean isPurchaseBooked() {
+    return purchaseBooked;
+  }
+
+  private JSONObject buildPurchaseJson() {
+    Product product = formData.getProductLive().getValue();
+    String amount = isPurchaseAmountValid() ? purchaseAmountLive.getValue() : "1";
+    JSONObject json = new JSONObject();
+    try {
+      json.put("amount", amount);
+      if (isFeatureEnabled(Constants.PREF.FEATURE_STOCK_PRICE_TRACKING)) {
+        Double priceStock = computePurchasePricePerStockUnit();
+        if (priceStock != null) {
+          json.put("price", String.valueOf(priceStock));
+        }
+        if (product != null && product.getStoreId() != null) {
+          json.put("shopping_location_id", product.getStoreId());
+        }
+      }
+      json.put("best_before_date", isFeatureEnabled(Constants.PREF.FEATURE_STOCK_BBD_TRACKING)
+          ? PurchaseDueDateUtil.resolveBestBeforeDate(purchaseDueDateLive.getValue())
+          : Constants.DATE.NEVER_OVERDUE);
+      if (isFeatureEnabled(Constants.PREF.FEATURE_STOCK_LOCATION_TRACKING) && product != null
+          && product.getLocationId() != null) {
+        json.put("location_id", product.getLocationId());
+      }
+      if (!isBlank(purchaseNoteLive.getValue())) {
+        json.put("note", purchaseNoteLive.getValue());
+      }
+    } catch (JSONException e) {
+      if (debug) {
+        Log.e(TAG, "buildPurchaseJson: " + e);
+      }
+    }
+    return json;
+  }
+
+  private void linkScannedBarcodeAndUploadPending(
+      int productId, @Nullable Integer packagingQuId, Runnable onFinished
+  ) {
+    if (productId < 0 || isBlank(scannedBarcode) || isAlreadyCoveredByPendingBarcode()) {
+      uploadBarcodesIfNecessary(productId, onFinished);
+      return;
+    }
+    ProductBarcode existing = ProductBarcode.getFromBarcode(productBarcodes, scannedBarcode);
+    if (existing != null) {
+      if (debug && existing.getProductIdInt() != productId) {
+        Log.w(TAG, "linkScannedBarcodeAndUploadPending: barcode " + scannedBarcode
+            + " already belongs to product " + existing.getProductIdInt());
+      }
+      uploadBarcodesIfNecessary(productId, onFinished);
+      return;
+    }
+    ProductBarcode productBarcode = new ProductBarcode();
+    productBarcode.setProductIdInt(productId);
+    productBarcode.setBarcode(scannedBarcode);
+    if (packagingQuId != null) {
+      productBarcode.setAmount("1");
+      productBarcode.setQuId(String.valueOf(packagingQuId));
+    }
+    if (fromPurchase && isPurchaseAmountValid()) {
+      Product currentProduct = formData.getProductLive().getValue();
+      if (currentProduct != null && currentProduct.getStoreId() != null) {
+        productBarcode.setStoreId(currentProduct.getStoreId());
+      }
+      Double pricePerStockUnit = computePurchasePricePerStockUnit();
+      if (pricePerStockUnit != null) {
+        productBarcode.setLastPrice(String.valueOf(pricePerStockUnit));
+      }
+    }
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.PRODUCT_BARCODES),
+        productBarcode.getJsonFromProductBarcode(debug, TAG),
+        response -> uploadBarcodesIfNecessary(productId, onFinished),
+        error -> {
+          if (debug) {
+            Log.w(TAG, "linkScannedBarcodeAndUploadPending: failed to link barcode "
+                + scannedBarcode + " to product " + productId + ": "
+                + describeVolleyError(error));
+          }
+          uploadBarcodesIfNecessary(productId, onFinished);
+        }
+    );
+  }
+
+  private boolean isAlreadyCoveredByPendingBarcode() {
+    List<PendingProductBarcode> pending = pendingProductBarcodesLive.getValue();
+    if (pending == null || scannedBarcode == null) {
+      return false;
+    }
+    for (PendingProductBarcode pendingProductBarcode : pending) {
+      if (scannedBarcode.equals(pendingProductBarcode.getBarcode())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void uploadBarcodesIfNecessary(int productId, Runnable onFinished) {
@@ -1281,6 +1474,10 @@ public class MasterProductViewModel extends BaseViewModel {
 
   public MutableLiveData<String> getPurchaseNoteLive() {
     return purchaseNoteLive;
+  }
+
+  public LiveData<Boolean> getPurchaseFailedLive() {
+    return purchaseFailedLive;
   }
 
   public LiveData<Integer> getDueDateTypeLive() {

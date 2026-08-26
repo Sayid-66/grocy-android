@@ -465,6 +465,7 @@ public final class Constants {
     public final static String SHOW_OFFLINE = "show_offline";
     public final static String BARCODE = "barcode";
     public final static String BARCODE_ALREADY_HANDLED = "barcode_already_handled";
+    public final static String PURCHASE_ALREADY_BOOKED = "purchase_already_booked";
     public final static String DISPLAY_EMPTY_OPTION = "display_empty_option";
     public final static String DISPLAY_NEW_OPTION = "display_new_option";
     public final static String DISPLAY_PIN_BUTTONS = "display_pin_buttons";

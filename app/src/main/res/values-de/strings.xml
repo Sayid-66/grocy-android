@@ -1344,6 +1344,7 @@
   <string name="msg_quick_qu_missing">„%1$s“ ist noch nicht als Mengeneinheit vorhanden.</string>
   <string name="action_quick_qu_create">%1$s anlegen</string>
   <string name="msg_quick_packaging_content_failed">Das Produkt wurde gespeichert, aber Inhaltsmenge/-einheit konnten nicht vollständig übernommen werden. Du kannst sie manuell auf den Seiten „Mengeneinheiten“ bzw. „Umrechnungen“ nachtragen.</string>
+  <string name="msg_product_saved_purchase_failed">Das Produkt wurde gespeichert, aber der Einkauf konnte nicht gebucht werden. Bitte versuche es erneut.</string>
 
   <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
   <string name="subtitle_off_energy_no_basis">%1$s kcal</string>

@@ -228,6 +228,12 @@ public class MasterProductFragment extends BaseFragment {
       } else if (event.getType() == Event.SET_PRODUCT_ID) {
         int id = event.getBundle().getInt(Constants.ARGUMENT.PRODUCT_ID);
         setForPreviousDestination(Constants.ARGUMENT.PRODUCT_ID, id);
+        if (viewModel.hasScannedBarcode()) {
+          setForPreviousDestination(ARGUMENT.BARCODE_ALREADY_HANDLED, true);
+        }
+        if (viewModel.isPurchaseBooked()) {
+          setForPreviousDestination(ARGUMENT.PURCHASE_ALREADY_BOOKED, true);
+        }
         if (NumUtil.isStringInt(args.getPendingProductId())) {
           setForPreviousDestination(
               ARGUMENT.PENDING_PRODUCT_ID,
@@ -427,6 +433,10 @@ public class MasterProductFragment extends BaseFragment {
 
   public void onQuickContentQuCreateClick() {
     viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
+  }
+
+  public void onRetryPurchaseClick() {
+    viewModel.retryPurchase();
   }
 
   /** Receives the result from {@link MasterProductViewModel#showPurchaseDueDateBottomSheet}. */

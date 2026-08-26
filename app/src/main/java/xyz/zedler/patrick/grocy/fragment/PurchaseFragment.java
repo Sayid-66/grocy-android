@@ -189,9 +189,9 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
         embeddedFragmentScanner.startScannerIfVisible();
       } else if (event.getType() == Event.CHOOSE_PRODUCT) {
         String barcode = event.getBundle().getString(ARGUMENT.BARCODE);
-        activity.navUtil.navigate(PurchaseFragmentDirections
-            .actionPurchaseFragmentToChooseProductFragment(barcode)
-            .setPendingProductsActive(viewModel.isQuickModeEnabled()));
+        activity.navUtil.navigate(buildChooseProductDirection(
+            barcode, viewModel.isQuickModeEnabled()
+        ));
       } else if (event.getType() == Event.CONFIRM_FREEZING) {
         new MaterialAlertDialogBuilder(activity, R.style.ThemeOverlay_Grocy_AlertDialog_Caution)
             .setTitle(R.string.title_confirmation)
@@ -230,25 +230,21 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
         getFromThisDestinationNow(ARGUMENT.BARCODE_ALREADY_HANDLED)
     );
     removeForThisDestination(ARGUMENT.BARCODE_ALREADY_HANDLED);
+    boolean purchaseAlreadyBooked = Boolean.TRUE.equals(
+        getFromThisDestinationNow(ARGUMENT.PURCHASE_ALREADY_BOOKED)
+    );
+    removeForThisDestination(ARGUMENT.PURCHASE_ALREADY_BOOKED);
     if (barcode != null) {
       removeForThisDestination(Constants.ARGUMENT.BARCODE);
-      if (!barcodeAlreadyHandled) {
-        viewModel.addBarcodeToExistingProduct(barcode);
-      }
     }
     Integer productIdSavedSate = (Integer) getFromThisDestinationNow(Constants.ARGUMENT.PRODUCT_ID);
     if (productIdSavedSate != null) {
       removeForThisDestination(Constants.ARGUMENT.PRODUCT_ID);
-      viewModel.setProductWillBeFilled(true);
-      viewModel.setQueueEmptyAction(() -> {
-        if (barcode != null && barcodeAlreadyHandled) {
-          viewModel.setProductFromJustLinkedBarcode(productIdSavedSate, barcode);
-        } else {
-          viewModel.setProduct(productIdSavedSate, null, null);
-        }
-        viewModel.setProductWillBeFilled(false);
-      });
-    } else if (NumUtil.isStringInt(args.getProductId())) {
+    }
+    applyReturnedProduct(
+        viewModel, barcode, barcodeAlreadyHandled, purchaseAlreadyBooked, productIdSavedSate
+    );
+    if (productIdSavedSate == null && NumUtil.isStringInt(args.getProductId())) {
       int productId = Integer.parseInt(args.getProductId());
       setArguments(new PurchaseFragmentArgs.Builder(args)
           .setProductId(null).build().toBundle());
@@ -535,6 +531,9 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
   }
 
   public void focusNextInvalidView() {
+    if (binding != null) {
+      binding.executePendingBindings();
+    }
     View nextView = null;
     if (!viewModel.getFormData().isProductNameValid()) {
       nextView = binding.autoCompletePurchaseProduct;
@@ -553,6 +552,40 @@ public class PurchaseFragment extends BaseFragment implements BarcodeListener, H
     if (nextView instanceof EditText) {
       activity.showKeyboard((EditText) nextView);
     }
+  }
+
+  static PurchaseFragmentDirections.ActionPurchaseFragmentToChooseProductFragment
+      buildChooseProductDirection(String barcode, boolean pendingProductsActive) {
+    return PurchaseFragmentDirections.actionPurchaseFragmentToChooseProductFragment(barcode)
+        .setPendingProductsActive(pendingProductsActive)
+        .setFromPurchase(true);
+  }
+
+  static void applyReturnedProduct(
+      PurchaseViewModel viewModel,
+      String barcode,
+      boolean barcodeAlreadyHandled,
+      boolean purchaseAlreadyBooked,
+      Integer productId
+  ) {
+    if (purchaseAlreadyBooked) {
+      return;
+    }
+    if (barcode != null && !barcodeAlreadyHandled) {
+      viewModel.addBarcodeToExistingProduct(barcode);
+    }
+    if (productId == null) {
+      return;
+    }
+    viewModel.setProductWillBeFilled(true);
+    viewModel.setQueueEmptyAction(() -> {
+      if (barcode != null && barcodeAlreadyHandled) {
+        viewModel.setProductFromJustLinkedBarcode(productId, barcode);
+      } else {
+        viewModel.setProduct(productId, null, null);
+      }
+      viewModel.setProductWillBeFilled(false);
+    });
   }
 
   public void clearInputFocusOrFocusNextInvalidView() {

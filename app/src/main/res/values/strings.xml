@@ -1437,6 +1437,7 @@
   <string name="msg_quick_qu_missing">„%1$s“ is not yet a quantity unit.</string>
   <string name="action_quick_qu_create">Create „%1$s“</string>
   <string name="msg_quick_packaging_content_failed">The product was saved, but its content amount/unit could not be fully applied. You can set them manually on the quantity unit / conversions screens.</string>
+  <string name="msg_product_saved_purchase_failed">The product was saved, but the purchase could not be booked. Please try again.</string>
 
   <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
   <string name="subtitle_off_energy_no_basis">%1$s kcal</string>

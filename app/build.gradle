@@ -58,6 +58,16 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            // Required so Robolectric-backed unit tests (Etappe 8) can resolve real app string
+            // resources (e.g. R.string.msg_product_saved_purchase_failed via
+            // BaseViewModel#getString) - without this, ANY app resource lookup under Robolectric
+            // throws Resources$NotFoundException, regardless of GrocyApi/DownloadHelper mocking.
+            includeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         viewBinding = true
         dataBinding = true
@@ -132,4 +142,10 @@ dependencies {
     coreLibraryDesugaring(libs.desugar)
     // JUnit 4 for unit tests
     testImplementation(libs.junit)
+    // Robolectric + Mockito + LiveData test sync for Etappe-8 MasterProductViewModel purchase-
+    // chain Robolectric tests (integration-plan-barcode-lookup.md, Etappe 8)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.androidx.arch.core.testing)
+    testImplementation(libs.androidx.test.core)
 }
