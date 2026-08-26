@@ -872,6 +872,10 @@
   <string name="property_status">Status</string>
   <string name="property_status_insert">Status:</string>
   <string name="property_amount">Amount</string>
+  <!-- Label for the "how many packages" field in the merged "This purchase" section - deliberately
+       NOT "Amount"/"Quantity" (property_amount), to make clear this counts packages, not their
+       content (e.g. 1 bottle, not its 250 ml content, which is shown separately). -->
+  <string name="title_purchase_package_count">Package count</string>
   <string name="property_amount_insert">Amount: %1$s</string>
   <string name="property_seconds">Seconds</string>
   <!-- %1$s is a number (amount of seconds) -->
@@ -1454,6 +1458,14 @@
   <string name="property_off_packaging_material">Material</string>
   <string name="property_off_brand_full">Other brand names</string>
   <string name="subtitle_off_extra_field">%1$s: %2$s</string>
+
+  <!-- "This purchase" merged first-purchase card in MasterProductFragment (creating a new
+       product from a scanned barcode while purchasing) -->
+  <string name="title_this_purchase">This purchase</string>
+  <string name="label_due_date_type_best_before">Best before (MHD)</string>
+  <string name="label_due_date_type_expiration">Expiration date</string>
+  <string name="title_unit_price_packaging">Price per package</string>
+  <string name="title_summary">Summary</string>
   <string name="title_advanced_settings">Advanced settings</string>
   <string name="subtitle_advanced_settings">Optional properties, storage location details, due date details, quantity units, amount, barcodes, unit conversions</string>
 </resources>

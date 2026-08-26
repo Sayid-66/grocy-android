@@ -31,6 +31,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.Transformations;
@@ -57,6 +58,7 @@ import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.api.GrocyApi;
 import xyz.zedler.patrick.grocy.form.FormDataMasterProduct;
 import xyz.zedler.patrick.grocy.fragment.MasterProductFragmentArgs;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.DateBottomSheet;
 import xyz.zedler.patrick.grocy.helper.DownloadHelper;
 import xyz.zedler.patrick.grocy.model.Event;
 import xyz.zedler.patrick.grocy.model.InfoFullscreen;
@@ -71,12 +73,14 @@ import xyz.zedler.patrick.grocy.model.QuantityUnitConversion;
 import xyz.zedler.patrick.grocy.model.Store;
 import xyz.zedler.patrick.grocy.repository.MasterProductRepository;
 import xyz.zedler.patrick.grocy.util.ArrayUtil;
+import xyz.zedler.patrick.grocy.util.DateUtil;
 import xyz.zedler.patrick.grocy.util.EnergyConversionUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
 import xyz.zedler.patrick.grocy.util.NutrientBasisUtil;
 import xyz.zedler.patrick.grocy.util.OffProductGroupUtil;
 import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
+import xyz.zedler.patrick.grocy.util.PurchasePriceUtil;
 import xyz.zedler.patrick.grocy.util.QuickPackagingSyncUtil;
 import xyz.zedler.patrick.grocy.util.VersionUtil;
 import xyz.zedler.patrick.grocy.web.NetworkQueue;
@@ -93,6 +97,7 @@ public class MasterProductViewModel extends BaseViewModel {
 
   private final SharedPreferences sharedPrefs;
   private final DownloadHelper dlHelper;
+  private final DateUtil dateUtil;
   private final GrocyApi grocyApi;
   private final MasterProductRepository repository;
   private final FormDataMasterProduct formData;
@@ -125,6 +130,7 @@ public class MasterProductViewModel extends BaseViewModel {
   private final String scannedBarcode;
   @Nullable private final List<String> offCategoriesTags;
   private final boolean offNutritionUnreliable;
+  private final boolean fromPurchase;
 
   private static final List<String> QUICK_PACKAGING_LABELS = Arrays.asList(
       "Flasche", "Glas", "Dose", "Packung", "Beutel", "Karton", "Schachtel", "Schale",
@@ -137,6 +143,26 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<Boolean> quickContentQuMissingLive;
   private final MutableLiveData<Boolean> showQuickPackagingEntryLive;
   private final int maxDecimalPlacesAmount;
+  private final int decimalPlacesPriceDisplay;
+  private final String currency;
+
+  // "Dieser Einkauf" - merged first-purchase section, shown only when this product creation was
+  // reached from the Purchase flow's unknown-barcode scan (fromPurchase) for a genuinely new,
+  // non-cloned product (same guard as showQuickPackagingEntryLive above). This stage only makes
+  // the input/display fields and their live summary available - saveProduct() itself does not yet
+  // book a purchase from them (that chain follows in a later stage), so "Fertig" still behaves
+  // exactly as before.
+  private final MutableLiveData<Boolean> showPurchaseSectionLive;
+  private final MutableLiveData<String> purchaseAmountLive;
+  private final MutableLiveData<String> purchaseDueDateLive;
+  private final MutableLiveData<String> purchasePriceLive;
+  private final MutableLiveData<Boolean> purchaseIsTotalPriceLive;
+  private final MutableLiveData<String> purchaseNoteLive;
+  private final LiveData<Integer> dueDateTypeLive;
+  private final LiveData<String> purchaseDueDateTextLive;
+  private final LiveData<String> summaryAmountContentLive;
+  private final LiveData<String> summaryDueDateLive;
+  private final LiveData<String> purchaseSummaryPriceLive;
 
   private List<Product> products;
   private List<ProductBarcode> productBarcodes;
@@ -177,6 +203,7 @@ public class MasterProductViewModel extends BaseViewModel {
     args = startupArgs;
     isLoadingLive = new MutableLiveData<>(false);
     dlHelper = new DownloadHelper(getApplication(), TAG, isLoadingLive::setValue, getOfflineLive());
+    dateUtil = new DateUtil(application);
     grocyApi = new GrocyApi(getApplication());
     repository = new MasterProductRepository(application);
     formData = new FormDataMasterProduct(application, getBeginnerModeEnabled());
@@ -219,9 +246,15 @@ public class MasterProductViewModel extends BaseViewModel {
     offExtraInfoExpandedLive = new MutableLiveData<>(false);
     advancedSettingsExpandedLive = new MutableLiveData<>(false);
     scannedBarcode = args.getBarcode();
+    fromPurchase = args.getFromPurchase();
     offNutritionUnreliable = args.getOffNutritionUnreliable();
     offCategoriesTags = !isBlank(args.getOffCategoriesTagsJoined())
         ? Arrays.asList(args.getOffCategoriesTagsJoined().split(",")) : null;
+    purchaseAmountLive = new MutableLiveData<>();
+    purchaseDueDateLive = new MutableLiveData<>();
+    purchasePriceLive = new MutableLiveData<>();
+    purchaseIsTotalPriceLive = new MutableLiveData<>(false);
+    purchaseNoteLive = new MutableLiveData<>();
 
     boolean isClone = args.getProduct() != null || NumUtil.isStringInt(args.getProductId());
     boolean isGenuinelyNewScannedProduct = !isActionEdit() && !isClone && hasScannedBarcode();
@@ -230,6 +263,18 @@ public class MasterProductViewModel extends BaseViewModel {
         STOCK.DECIMAL_PLACES_AMOUNT,
         SETTINGS_DEFAULT.STOCK.DECIMAL_PLACES_AMOUNT
     );
+    decimalPlacesPriceDisplay = sharedPrefs.getInt(
+        STOCK.DECIMAL_PLACES_PRICES_DISPLAY,
+        SETTINGS_DEFAULT.STOCK.DECIMAL_PLACES_PRICES_DISPLAY
+    );
+    currency = sharedPrefs.getString(Constants.PREF.CURRENCY, "");
+    // The merged "Dieser Einkauf" section is a strict subset of the quick packaging card's own
+    // guard: it must never show for edit/clone either, AND only when this creation actually came
+    // from the Purchase flow's unknown-barcode scan (fromPurchase).
+    showPurchaseSectionLive = new MutableLiveData<>(isGenuinelyNewScannedProduct && fromPurchase);
+    if (isGenuinelyNewScannedProduct && fromPurchase) {
+      purchaseAmountLive.setValue(NumUtil.trimAmount(1, maxDecimalPlacesAmount));
+    }
     quickPackagingLive = new MutableLiveData<>();
     quickContentAmountLive = new MutableLiveData<>();
     quickContentUnitLive = new MutableLiveData<>();
@@ -290,6 +335,48 @@ public class MasterProductViewModel extends BaseViewModel {
       }
       return null;
     });
+    // Mirrors FormDataPurchase#dueDateTextLive: an unset date reads "Nichts ausgewählt" (never a
+    // real date, never defaulted to "today"), the "never overdue" sentinel reads "Nie
+    // überfällig", and any real date is localized. Display-only - the raw purchaseDueDateLive
+    // value itself is left untouched.
+    purchaseDueDateTextLive = Transformations.map(purchaseDueDateLive, date -> {
+      if (isBlank(date)) {
+        return getString(R.string.subtitle_none_selected);
+      } else if (date.equals(Constants.DATE.NEVER_OVERDUE)) {
+        return getString(R.string.subtitle_never_overdue);
+      } else {
+        return dateUtil.getLocalizedDate(date, DateUtil.FORMAT_MEDIUM);
+      }
+    });
+    // "MHD" (best-before) or "Verbrauchsdatum" (expiration) - reflects the SAME
+    // Product.dueDateType field the classic Fälligkeitsdatum sub-screen edits (never a second,
+    // parallel value).
+    dueDateTypeLive = Transformations.map(
+        formData.getProductLive(), p -> p != null ? p.getDueDateTypeInt() : 1
+    );
+    MediatorLiveData<String> summaryAmountContent = new MediatorLiveData<>();
+    Observer<Object> updateSummaryAmountContent =
+        ignored -> summaryAmountContent.setValue(formatSummaryAmountContent());
+    summaryAmountContent.addSource(purchaseAmountLive, updateSummaryAmountContent);
+    summaryAmountContent.addSource(quickPackagingLive, updateSummaryAmountContent);
+    summaryAmountContent.addSource(quickContentAmountLive, updateSummaryAmountContent);
+    summaryAmountContent.addSource(quickContentUnitLive, updateSummaryAmountContent);
+    summaryAmountContentLive = summaryAmountContent;
+    MediatorLiveData<String> summaryDueDate = new MediatorLiveData<>();
+    Observer<Object> updateSummaryDueDate =
+        ignored -> summaryDueDate.setValue(formatSummaryDueDate());
+    summaryDueDate.addSource(formData.getProductLive(), updateSummaryDueDate);
+    summaryDueDate.addSource(purchaseDueDateLive, updateSummaryDueDate);
+    summaryDueDateLive = summaryDueDate;
+    // Display-only German-locale price formatting for the Summary row - purchasePriceLive itself
+    // (the two-way bound EditText value) and everything that reads/saves it stay untouched.
+    MediatorLiveData<String> purchaseSummaryPrice = new MediatorLiveData<>();
+    Observer<Object> updateSummaryPrice =
+        ignored -> purchaseSummaryPrice.setValue(formatSummaryPrice());
+    purchaseSummaryPrice.addSource(purchasePriceLive, updateSummaryPrice);
+    purchaseSummaryPrice.addSource(purchaseIsTotalPriceLive, updateSummaryPrice);
+    purchaseSummaryPrice.addSource(quickPackagingLive, updateSummaryPrice);
+    purchaseSummaryPriceLive = purchaseSummaryPrice;
     quickContentAmountLive.observeForever(quickContentAmountObserver);
 
     pendingProductBarcodesLive = new MutableLiveData<>();
@@ -1159,6 +1246,180 @@ public class MasterProductViewModel extends BaseViewModel {
 
   public LiveData<Boolean> getQuickContentQuMissingLive() {
     return quickContentQuMissingLive;
+  }
+
+  // "Dieser Einkauf" - see field docs above.
+
+  public LiveData<Boolean> getShowPurchaseSectionLive() {
+    return showPurchaseSectionLive;
+  }
+
+  public MutableLiveData<String> getPurchaseAmountLive() {
+    return purchaseAmountLive;
+  }
+
+  public MutableLiveData<String> getPurchaseDueDateLive() {
+    return purchaseDueDateLive;
+  }
+
+  public MutableLiveData<String> getPurchasePriceLive() {
+    return purchasePriceLive;
+  }
+
+  public MutableLiveData<Boolean> getPurchaseIsTotalPriceLive() {
+    return purchaseIsTotalPriceLive;
+  }
+
+  /**
+   * Plain setter for the "pro Verpackung"/"Gesamtpreis" radio toggle - needed because a binding
+   * lambda cannot call {@code MutableLiveData#setValue} directly on {@code purchaseIsTotalPriceLive}
+   * (data binding auto-unwraps the observable LiveData field to its value there).
+   */
+  public void setPurchaseIsTotalPrice(boolean isTotalPrice) {
+    purchaseIsTotalPriceLive.setValue(isTotalPrice);
+  }
+
+  public MutableLiveData<String> getPurchaseNoteLive() {
+    return purchaseNoteLive;
+  }
+
+  public LiveData<Integer> getDueDateTypeLive() {
+    return dueDateTypeLive;
+  }
+
+  public void setPurchaseDueDateType(int type) {
+    Product product = formData.getProductLive().getValue();
+    if (product == null || (type != 1 && type != 2)) {
+      return;
+    }
+    product.setDueDateTypeInt(type);
+    formData.getProductLive().setValue(product);
+  }
+
+  public LiveData<String> getPurchaseDueDateTextLive() {
+    return purchaseDueDateTextLive;
+  }
+
+  /** "1 Flasche × 0,5 l" - null while no packaging is confirmed yet. */
+  public LiveData<String> getSummaryAmountContentLive() {
+    return summaryAmountContentLive;
+  }
+
+  @Nullable
+  private String formatSummaryAmountContent() {
+    String packaging = quickPackagingLive.getValue();
+    if (isBlank(packaging)) {
+      return null;
+    }
+    String amount = NumUtil.isStringDouble(purchaseAmountLive.getValue())
+        ? purchaseAmountLive.getValue() : "1";
+    StringBuilder text = new StringBuilder(amount).append(" ").append(packaging);
+    String contentAmount = quickContentAmountLive.getValue();
+    String contentUnit = quickContentUnitLive.getValue();
+    if (NumUtil.isStringDouble(contentAmount) && !isBlank(contentUnit)) {
+      text.append(" × ").append(contentAmount).append(" ").append(contentUnit);
+    }
+    return text.toString();
+  }
+
+  /** "MHD: 23.01.2031" / "Verbrauchsdatum: –" - the type mirrors {@link #getDueDateTypeLive()}. */
+  public LiveData<String> getSummaryDueDateLive() {
+    return summaryDueDateLive;
+  }
+
+  private String formatSummaryDueDate() {
+    Product product = formData.getProductLive().getValue();
+    String typeLabel = product != null && product.getDueDateTypeInt() == 2
+        ? getString(R.string.label_due_date_type_expiration)
+        : getString(R.string.label_due_date_type_best_before);
+    String date = purchaseDueDateLive.getValue();
+    return typeLabel + ": " + (isBlank(date) ? getString(R.string.subtitle_none_selected) : date);
+  }
+
+  /** "2,25 €" / "2,25 € pro Flasche" - see {@link #formatSummaryPrice()}. */
+  public LiveData<String> getPurchaseSummaryPriceLive() {
+    return purchaseSummaryPriceLive;
+  }
+
+  /**
+   * "2,25 €" / "2,25 € pro Flasche" for the Summary row's price display - German-locale comma
+   * instead of NumUtil's internal "."-separated convention, and the packaging name appended when
+   * the price is per package rather than a total. Display-only: purchasePriceLive itself (what
+   * gets saved) is never touched here.
+   */
+  private String formatSummaryPrice() {
+    String priceStr = purchasePriceLive.getValue();
+    if (!NumUtil.isStringDouble(priceStr)) {
+      return null;
+    }
+    String priceWithCurrency = NumUtil.trimPrice(NumUtil.toDouble(priceStr), decimalPlacesPriceDisplay)
+        .replace(".", ",");
+    if (!isBlank(currency)) {
+      priceWithCurrency += " " + currency;
+    }
+    boolean isTotalPrice = Boolean.TRUE.equals(purchaseIsTotalPriceLive.getValue());
+    String packaging = quickPackagingLive.getValue();
+    if (!isTotalPrice && !isBlank(packaging)) {
+      return getString(R.string.property_price_unit_insert, priceWithCurrency, packaging);
+    }
+    return priceWithCurrency;
+  }
+
+  public void increasePurchaseAmount() {
+    double current = NumUtil.isStringDouble(purchaseAmountLive.getValue())
+        ? NumUtil.toDouble(purchaseAmountLive.getValue()) : 0;
+    purchaseAmountLive.setValue(NumUtil.trimAmount(current + 1, maxDecimalPlacesAmount));
+  }
+
+  public void decreasePurchaseAmount() {
+    if (!NumUtil.isStringDouble(purchaseAmountLive.getValue())) {
+      return;
+    }
+    double current = NumUtil.toDouble(purchaseAmountLive.getValue());
+    if (current > 1) {
+      purchaseAmountLive.setValue(NumUtil.trimAmount(current - 1, maxDecimalPlacesAmount));
+    }
+  }
+
+  /**
+   * Opens the same {@link DateBottomSheet} the classic Purchase screen uses for its due date
+   * field - result comes back via
+   * {@link xyz.zedler.patrick.grocy.fragment.MasterProductFragment#selectDueDate(String)}, same
+   * as {@code PurchaseFragment#selectDueDate}. No individual concrete date is ever preset here -
+   * the sheet simply opens empty/on today unless the user already picked something on this exact
+   * screen before.
+   */
+  public void showPurchaseDueDateBottomSheet(boolean hasFocus) {
+    if (!hasFocus) {
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putString(Constants.ARGUMENT.DEFAULT_DAYS_FROM_NOW, String.valueOf(0));
+    bundle.putString(Constants.ARGUMENT.SELECTED_DATE, purchaseDueDateLive.getValue());
+    bundle.putInt(DateBottomSheet.DATE_TYPE, DateBottomSheet.DUE_DATE);
+    showBottomSheet(new DateBottomSheet(), bundle);
+  }
+
+  private boolean isPurchaseAmountValid() {
+    return NumUtil.isStringDouble(purchaseAmountLive.getValue())
+        && NumUtil.toDouble(purchaseAmountLive.getValue()) > 0;
+  }
+
+  /**
+   * Price per stock unit (i.e. per packaging, e.g. "per Flasche") from the "Dieser Einkauf"
+   * section's confirmed price, resolving "Preis pro Verpackung" vs. "Gesamtpreis" exactly like
+   * the classic Purchase screen's {@code QuantityUnitConversionUtil#getPriceStock}. Unlike there,
+   * no separate quantity-unit-factor conversion is applied: the purchase unit IS the stock unit
+   * by construction in this household model (see QuickPackagingSyncUtil), so the factor is always
+   * 1. Returns null if no valid price/amount is available - never invents a price.
+   */
+  @Nullable
+  private Double computePurchasePricePerStockUnit() {
+    return PurchasePriceUtil.computePricePerStockUnit(
+        purchasePriceLive.getValue(),
+        purchaseAmountLive.getValue(),
+        Boolean.TRUE.equals(purchaseIsTotalPriceLive.getValue())
+    );
   }
 
   @NonNull

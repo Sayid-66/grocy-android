@@ -140,6 +140,25 @@ public class MasterProductFragment extends BaseFragment {
         label -> setCheckedChipByLabel(binding.chipGroupQuickContentUnit, label)
     );
 
+    // "Dieser Einkauf" section: MHD/Verbrauchsdatum type toggle - same plain-listener pattern as
+    // the quick packaging/content chips above, writing directly into the shared Product object
+    // (see MasterProductViewModel#setPurchaseDueDateType) so the classic Fälligkeitsdatum
+    // sub-screen always reflects the same choice, never a second, parallel value.
+    binding.chipGroupPurchaseDueDateType.setOnCheckedStateChangeListener((group, checkedIds) -> {
+      if (checkedIds.isEmpty()) {
+        return;
+      }
+      int type = checkedIds.get(0) == binding.chipDueDateTypeExpiration.getId() ? 2 : 1;
+      viewModel.setPurchaseDueDateType(type);
+    });
+    viewModel.getDueDateTypeLive().observe(getViewLifecycleOwner(), type -> {
+      Chip chip = type != null && type == 2
+          ? binding.chipDueDateTypeExpiration : binding.chipDueDateTypeBestBefore;
+      if (!chip.isChecked()) {
+        chip.setChecked(true);
+      }
+    });
+
     SystemBarBehavior systemBarBehavior = new SystemBarBehavior(activity);
     systemBarBehavior.setAppBar(binding.appBar);
     systemBarBehavior.setContainer(binding.swipeMasterProductSimple);
@@ -410,6 +429,12 @@ public class MasterProductFragment extends BaseFragment {
     viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
   }
 
+  /** Receives the result from {@link MasterProductViewModel#showPurchaseDueDateBottomSheet}. */
+  @Override
+  public void selectDueDate(String dueDate) {
+    viewModel.getPurchaseDueDateLive().setValue(dueDate);
+  }
+
   public void showProductGroupBottomSheet() {
     List<ProductGroup> productGroups = viewModel.getProductGroups();
     if (productGroups == null) {
@@ -486,6 +511,18 @@ public class MasterProductFragment extends BaseFragment {
 
   public void scrollToLocation() {
     scrollToView(binding.rowLocation);
+  }
+
+  public void scrollToPurchaseAmount() {
+    scrollToView(binding.editTextPurchaseAmount);
+  }
+
+  public void scrollToDueDate() {
+    scrollToView(binding.chipGroupPurchaseDueDateType);
+  }
+
+  public void scrollToPrice() {
+    scrollToView(binding.textInputPurchasePrice);
   }
 
   public void scrollToStore() {
