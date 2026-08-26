@@ -219,9 +219,30 @@ public class ChooseProductFragment extends BaseFragment
   }
 
   public void createNewProduct() {
+    String barcode = ChooseProductFragmentArgs.fromBundle(requireArguments()).getBarcode();
+    boolean fromPurchase = ChooseProductFragmentArgs.fromBundle(requireArguments())
+        .getFromPurchase();
     navigateDeepLinkHorizontally(R.string.deep_link_masterProductFragment,
         new MasterProductFragmentArgs.Builder(Constants.ACTION.CREATE)
             .setProductName(viewModel.getProductNameLive().getValue())
+            .setBarcode(barcode)
+            .setOffBrand(viewModel.getOffBrand())
+            .setOffBrandFull(viewModel.getOffBrandFull())
+            .setOffQuantity(viewModel.getOffQuantity())
+            .setOffImageUrl(viewModel.getOffImageUrl())
+            .setOffEnergyPer100g(viewModel.getOffEnergyPer100g())
+            .setOffIngredients(viewModel.getOffIngredients())
+            .setOffAllergens(viewModel.getOffAllergens())
+            .setOffNutriscore(viewModel.getOffNutriscore())
+            .setOffOrigin(viewModel.getOffOrigin())
+            .setOffNutrients(viewModel.getOffNutrients())
+            .setOffPackagingType(viewModel.getOffPackagingType())
+            .setOffPackagingMaterial(viewModel.getOffPackagingMaterial())
+            .setOffContentAmount(viewModel.getOffContentAmount())
+            .setOffContentUnit(viewModel.getOffContentUnit())
+            .setOffCategoriesTagsJoined(viewModel.getOffCategoriesTagsJoined())
+            .setOffNutritionUnreliable(viewModel.isOffNutritionUnreliable())
+            .setFromPurchase(fromPurchase)
             .build().toBundle());
   }
 

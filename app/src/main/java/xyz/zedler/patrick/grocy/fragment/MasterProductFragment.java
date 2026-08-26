@@ -20,6 +20,7 @@
 
 package xyz.zedler.patrick.grocy.fragment;
 
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -33,6 +34,8 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import java.util.ArrayList;
+import java.util.List;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
 import xyz.zedler.patrick.grocy.Constants.ARGUMENT;
@@ -40,13 +43,20 @@ import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.activity.MainActivity;
 import xyz.zedler.patrick.grocy.behavior.SystemBarBehavior;
 import xyz.zedler.patrick.grocy.databinding.FragmentMasterProductBinding;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.LocationsBottomSheet;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.ProductGroupsBottomSheet;
+import xyz.zedler.patrick.grocy.fragment.bottomSheetDialog.StoresBottomSheet;
 import xyz.zedler.patrick.grocy.helper.InfoFullscreenHelper;
 import xyz.zedler.patrick.grocy.model.BottomSheetEvent;
 import xyz.zedler.patrick.grocy.model.Event;
+import xyz.zedler.patrick.grocy.model.Location;
 import xyz.zedler.patrick.grocy.model.Product;
+import xyz.zedler.patrick.grocy.model.ProductGroup;
 import xyz.zedler.patrick.grocy.model.SnackbarMessage;
+import xyz.zedler.patrick.grocy.model.Store;
 import xyz.zedler.patrick.grocy.util.HapticUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.PictureUtil;
 import xyz.zedler.patrick.grocy.util.ResUtil;
 import xyz.zedler.patrick.grocy.viewmodel.MasterProductViewModel;
 
@@ -95,13 +105,25 @@ public class MasterProductFragment extends BaseFragment {
       // remove product name from arguments because it was filled
       // in the form during ViewModel creation
       setArguments(new MasterProductFragmentArgs.Builder(args).setProductName(null)
-          .setProductId(null).build().toBundle());
+          .setProductId(null).setBarcode(null).setOffBrand(null).setOffBrandFull(null)
+          .setOffQuantity(null).setOffImageUrl(null).setOffEnergyPer100g(null)
+          .setOffIngredients(null).setOffAllergens(null).setOffNutriscore(null)
+          .setOffOrigin(null).setOffNutrients(null).setOffPackagingType(null)
+          .setOffPackagingMaterial(null).setOffContentAmount(null).setOffContentUnit(null)
+          .setOffCategoriesTagsJoined(null)
+          .build().toBundle());
     }
     binding.setActivity(activity);
     binding.setFormData(viewModel.getFormData());
     binding.setViewModel(viewModel);
     binding.setFragment(this);
     binding.setLifecycleOwner(getViewLifecycleOwner());
+
+    viewModel.getOffImageUrlLive().observe(getViewLifecycleOwner(), imageUrl -> {
+      if (imageUrl != null && !imageUrl.isBlank()) {
+        PictureUtil.loadExternalPicture(binding.imageOffPicture, binding.frameOffPicture, imageUrl);
+      }
+    });
 
     binding.chipGroupQuickPackaging.setOnCheckedStateChangeListener(
         (group, checkedIds) -> viewModel.setQuickPackaging(getCheckedChipLabel(group))
@@ -386,6 +408,103 @@ public class MasterProductFragment extends BaseFragment {
 
   public void onQuickContentQuCreateClick() {
     viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
+  }
+
+  public void showProductGroupBottomSheet() {
+    List<ProductGroup> productGroups = viewModel.getProductGroups();
+    if (productGroups == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.PRODUCT_GROUPS, new ArrayList<>(productGroups));
+    bundle.putBoolean(ARGUMENT.DISPLAY_EMPTY_OPTION, true);
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getProductGroupId())
+        ? Integer.parseInt(product.getProductGroupId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new ProductGroupsBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectProductGroup(ProductGroup productGroup) {
+    viewModel.setProductGroup(productGroup);
+  }
+
+  public void showLocationBottomSheet() {
+    List<Location> locations = viewModel.getLocations();
+    if (locations == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.LOCATIONS, new ArrayList<>(locations));
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getLocationId())
+        ? Integer.parseInt(product.getLocationId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new LocationsBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectLocation(Location location, Bundle args) {
+    viewModel.setLocation(location);
+  }
+
+  public void showStoreBottomSheet() {
+    List<Store> stores = viewModel.getStores();
+    if (stores == null) {
+      viewModel.showNetworkErrorMessage(null);
+      return;
+    }
+    Bundle bundle = new Bundle();
+    bundle.putParcelableArrayList(Constants.ARGUMENT.STORES, new ArrayList<>(stores));
+    bundle.putBoolean(ARGUMENT.DISPLAY_EMPTY_OPTION, true);
+    Product product = viewModel.getFormData().getProductLive().getValue();
+    int selectedId = product != null && NumUtil.isStringInt(product.getStoreId())
+        ? Integer.parseInt(product.getStoreId()) : -1;
+    bundle.putInt(Constants.ARGUMENT.SELECTED_ID, selectedId);
+    activity.showBottomSheet(new StoresBottomSheet(), bundle);
+  }
+
+  @Override
+  public void selectStore(Store store) {
+    viewModel.setStore(store);
+  }
+
+  public void scrollToName() {
+    scrollToView(binding.editTextName);
+  }
+
+  public void scrollToPackaging() {
+    scrollToView(binding.chipGroupQuickPackaging);
+  }
+
+  public void scrollToProductGroup() {
+    scrollToView(binding.rowProductGroup);
+  }
+
+  public void scrollToLocation() {
+    scrollToView(binding.rowLocation);
+  }
+
+  public void scrollToStore() {
+    scrollToView(binding.rowStore);
+  }
+
+  private void scrollToView(@Nullable View target) {
+    if (binding == null || target == null) {
+      return;
+    }
+    binding.scroll.post(() -> {
+      if (binding == null) {
+        return;
+      }
+      Rect offsetRect = new Rect();
+      target.getDrawingRect(offsetRect);
+      binding.constraint.offsetDescendantRectToMyCoords(target, offsetRect);
+      binding.scroll.smoothScrollTo(0, offsetRect.top);
+    });
   }
 
   @Override

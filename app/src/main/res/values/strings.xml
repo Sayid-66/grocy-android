@@ -1434,4 +1434,26 @@
   <string name="action_quick_qu_create">Create „%1$s“</string>
   <string name="msg_quick_packaging_content_failed">The product was saved, but its content amount/unit could not be fully applied. You can set them manually on the quantity unit / conversions screens.</string>
 
+  <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
+  <string name="subtitle_off_energy_no_basis">%1$s kcal</string>
+  <string name="label_off_basis_100g">100 g</string>
+  <string name="label_off_basis_100ml">100 ml</string>
+  <string name="subtitle_off_extra_info">Additional product information</string>
+  <string name="subtitle_off_extra_info_hint">From Open Food Facts, informational only, may be incomplete</string>
+  <string name="property_off_nutrients">Nutrition</string>
+  <string name="subtitle_off_nutrients_per_100g">per 100 g</string>
+  <string name="subtitle_off_nutrients_per_100ml">per 100 ml</string>
+  <string name="subtitle_off_nutrients_with_basis">%1$s (%2$s)</string>
+  <string name="property_off_ingredients">Ingredients</string>
+  <string name="property_off_allergens">Allergens</string>
+  <string name="subtitle_off_allergens_no_data">Allergens: no data from Open Food Facts</string>
+  <string name="subtitle_off_allergens_disclaimer">Allergen information is for reference only and does not replace the label on the packaging.</string>
+  <string name="property_off_nutriscore">Nutri-Score</string>
+  <string name="property_off_origin">Origin</string>
+  <string name="property_off_packaging">Packaging</string>
+  <string name="property_off_packaging_material">Material</string>
+  <string name="property_off_brand_full">Other brand names</string>
+  <string name="subtitle_off_extra_field">%1$s: %2$s</string>
+  <string name="title_advanced_settings">Advanced settings</string>
+  <string name="subtitle_advanced_settings">Optional properties, storage location details, due date details, quantity units, amount, barcodes, unit conversions</string>
 </resources>

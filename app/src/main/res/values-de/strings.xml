@@ -1344,4 +1344,26 @@
   <string name="action_quick_qu_create">%1$s anlegen</string>
   <string name="msg_quick_packaging_content_failed">Das Produkt wurde gespeichert, aber Inhaltsmenge/-einheit konnten nicht vollständig übernommen werden. Du kannst sie manuell auf den Seiten „Mengeneinheiten“ bzw. „Umrechnungen“ nachtragen.</string>
 
+  <string name="subtitle_off_energy_with_basis">%1$s kcal / %2$s</string>
+  <string name="subtitle_off_energy_no_basis">%1$s kcal</string>
+  <string name="label_off_basis_100g">100 g</string>
+  <string name="label_off_basis_100ml">100 ml</string>
+  <string name="subtitle_off_extra_info">Weitere Produktinformationen</string>
+  <string name="subtitle_off_extra_info_hint">Daten von Open Food Facts. Angaben können unvollständig sein.</string>
+  <string name="property_off_nutrients">Nährwerte</string>
+  <string name="subtitle_off_nutrients_per_100g">pro 100 g</string>
+  <string name="subtitle_off_nutrients_per_100ml">pro 100 ml</string>
+  <string name="subtitle_off_nutrients_with_basis">%1$s (%2$s)</string>
+  <string name="property_off_ingredients">Zutaten</string>
+  <string name="property_off_allergens">Allergene</string>
+  <string name="subtitle_off_allergens_no_data">Allergene: Keine Angaben von Open Food Facts</string>
+  <string name="subtitle_off_allergens_disclaimer">Allergenangaben dienen nur zur Information und ersetzen nicht die Kennzeichnung auf der Verpackung.</string>
+  <string name="property_off_nutriscore">Nutri-Score</string>
+  <string name="property_off_origin">Herkunft</string>
+  <string name="property_off_packaging">Verpackung</string>
+  <string name="property_off_packaging_material">Material</string>
+  <string name="property_off_brand_full">Weitere Markenangaben</string>
+  <string name="subtitle_off_extra_field">%1$s: %2$s</string>
+  <string name="title_advanced_settings">Weitere Einstellungen</string>
+  <string name="subtitle_advanced_settings">Optionale Eigenschaften, Lagerstandort-Details, Fälligkeitsdatum-Details, Mengeneinheiten, Menge, Barcodes, Umrechnungen</string>
 </resources>
