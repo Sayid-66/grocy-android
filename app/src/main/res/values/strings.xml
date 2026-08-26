@@ -1404,4 +1404,30 @@
   <string name="mtm_notification">Certificate Verification</string>
   <string name="mtm_error_keystore">Exception on loading key store from file</string>
 
+  <!-- Quick packaging/content entry card -->
+  <string name="title_quick_packaging_entry">Packaging &amp; content</string>
+  <string name="subtitle_quick_packaging_entry">Confirm to remember these for the next scan of this barcode</string>
+  <!-- Canonical German packaging names are intentionally not translated. -->
+  <string name="label_packaging_flasche">Flasche</string>
+  <string name="label_packaging_glas">Glas</string>
+  <string name="label_packaging_dose">Dose</string>
+  <string name="label_packaging_packung">Packung</string>
+  <string name="label_packaging_beutel">Beutel</string>
+  <string name="label_packaging_karton">Karton</string>
+  <string name="label_packaging_schachtel">Schachtel</string>
+  <string name="label_packaging_schale">Schale</string>
+  <string name="label_packaging_becher">Becher</string>
+  <string name="label_packaging_tube">Tube</string>
+  <string name="label_packaging_stueck">Stück</string>
+  <string name="label_content_unit_g">g</string>
+  <string name="label_content_unit_kg">kg</string>
+  <string name="label_content_unit_mg">mg</string>
+  <string name="label_content_unit_ml">ml</string>
+  <string name="label_content_unit_l">l</string>
+  <string name="label_content_unit_cl">cl</string>
+  <string name="property_quick_content_amount">Content amount</string>
+  <string name="msg_quick_qu_missing">„%1$s“ is not yet a quantity unit.</string>
+  <string name="action_quick_qu_create">Create „%1$s“</string>
+  <string name="msg_quick_packaging_content_failed">The product was saved, but its content amount/unit could not be fully applied. You can set them manually on the quantity unit / conversions screens.</string>
+
 </resources>

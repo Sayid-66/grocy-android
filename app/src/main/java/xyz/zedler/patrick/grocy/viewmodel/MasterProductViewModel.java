@@ -26,16 +26,22 @@ import android.os.Bundle;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.PreferenceManager;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import org.json.JSONException;
 import org.json.JSONObject;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
+import xyz.zedler.patrick.grocy.Constants.SETTINGS.STOCK;
+import xyz.zedler.patrick.grocy.Constants.SETTINGS_DEFAULT;
 import xyz.zedler.patrick.grocy.R;
 import xyz.zedler.patrick.grocy.api.GrocyApi;
 import xyz.zedler.patrick.grocy.form.FormDataMasterProduct;
@@ -47,10 +53,14 @@ import xyz.zedler.patrick.grocy.model.PendingProductBarcode;
 import xyz.zedler.patrick.grocy.model.Product;
 import xyz.zedler.patrick.grocy.model.ProductBarcode;
 import xyz.zedler.patrick.grocy.model.ProductDetails;
+import xyz.zedler.patrick.grocy.model.QuantityUnit;
+import xyz.zedler.patrick.grocy.model.QuantityUnitConversion;
 import xyz.zedler.patrick.grocy.repository.MasterProductRepository;
 import xyz.zedler.patrick.grocy.util.ArrayUtil;
 import xyz.zedler.patrick.grocy.util.NumUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
+import xyz.zedler.patrick.grocy.util.QuickPackagingSyncUtil;
+import xyz.zedler.patrick.grocy.util.VersionUtil;
 import xyz.zedler.patrick.grocy.web.NetworkQueue;
 
 public class MasterProductViewModel extends BaseViewModel {
@@ -67,9 +77,33 @@ public class MasterProductViewModel extends BaseViewModel {
   private final MutableLiveData<Boolean> isLoadingLive;
   private final MutableLiveData<InfoFullscreen> infoFullscreenLive;
 
+  private static final List<String> QUICK_PACKAGING_LABELS = Arrays.asList(
+      "Flasche", "Glas", "Dose", "Packung", "Beutel", "Karton", "Schachtel", "Schale",
+      "Becher", "Tube", "Stueck"
+  );
+  private final MutableLiveData<String> quickPackagingLive;
+  private final MutableLiveData<String> quickContentAmountLive;
+  private final MutableLiveData<String> quickContentUnitLive;
+  private final MutableLiveData<Boolean> quickPackagingQuMissingLive;
+  private final MutableLiveData<Boolean> quickContentQuMissingLive;
+  private final MutableLiveData<Boolean> showQuickPackagingEntryLive;
+  private final int maxDecimalPlacesAmount;
+
   private List<Product> products;
   private List<ProductBarcode> productBarcodes;
   private List<PendingProductBarcode> pendingProductBarcodes;
+  private List<QuantityUnit> quantityUnits;
+
+  private Integer lastQuickAppliedStockQuId;
+  private Integer lastQuickAppliedPurchaseQuId;
+  private Integer lastQuickAppliedPriceQuId;
+  private Integer lastQuickAppliedConsumeQuId;
+  private Integer initialPresetStockQuId;
+  private Integer initialPresetPurchaseQuId;
+  private Integer initialPresetPriceQuId;
+  private Integer initialPresetConsumeQuId;
+  private final Observer<String> quickContentAmountObserver =
+      amount -> syncQuickPackagingToProduct();
 
   private NetworkQueue.QueueItem extraQueueItem;
   private final boolean debug;
@@ -96,12 +130,30 @@ public class MasterProductViewModel extends BaseViewModel {
     actionEditLive.setValue(args.getAction().equals(Constants.ACTION.EDIT));
     forceSaveWithClose = !isActionEdit() && args.getProductName() != null;
 
+    boolean isClone = args.getProduct() != null || NumUtil.isStringInt(args.getProductId());
+    boolean isGenuinelyNewScannedProduct = !isActionEdit() && !isClone
+        && args.getPendingProductBarcodes() != null;
+    // Interim substitute for hasScannedBarcode()/the Etappe-6 flag; revisit when Etappe 6 lands.
+    showQuickPackagingEntryLive = new MutableLiveData<>(isGenuinelyNewScannedProduct);
+    maxDecimalPlacesAmount = sharedPrefs.getInt(
+        STOCK.DECIMAL_PLACES_AMOUNT,
+        SETTINGS_DEFAULT.STOCK.DECIMAL_PLACES_AMOUNT
+    );
+    quickPackagingLive = new MutableLiveData<>();
+    quickContentAmountLive = new MutableLiveData<>();
+    quickContentUnitLive = new MutableLiveData<>();
+    quickPackagingQuMissingLive = new MutableLiveData<>(false);
+    quickContentQuMissingLive = new MutableLiveData<>(false);
+    quickContentAmountLive.observeForever(quickContentAmountObserver);
+
     pendingProductBarcodesLive = new MutableLiveData<>();
     infoFullscreenLive = new MutableLiveData<>();
 
     if (isActionEdit()) {
       if (args.getProduct() != null) {
-        setCurrentProduct(args.getProduct());
+        Product product = args.getProduct();
+        setCurrentProduct(product);
+        captureInitialQuantityUnits(product);
       } else {
         assert args.getProductId() != null;
         int productId = Integer.parseInt(args.getProductId());
@@ -110,7 +162,9 @@ public class MasterProductViewModel extends BaseViewModel {
           formData.getProductNamesLive().setValue(
               getProductNames(products, productDetails.getProduct().getName())
           );
-          setCurrentProduct(productDetails.getProduct());
+          Product product = productDetails.getProduct();
+          setCurrentProduct(product);
+          captureInitialQuantityUnits(product);
         });
       }
     } else if (args.getProduct() != null || NumUtil.isStringInt(args.getProductId())) {  // on clone
@@ -125,6 +179,7 @@ public class MasterProductViewModel extends BaseViewModel {
           sendEvent(Event.FOCUS_INVALID_VIEWS);
         }
         setCurrentProduct(product);
+        captureInitialQuantityUnits(product);
       } else {
         assert args.getProductId() != null;
         int productId = Integer.parseInt(args.getProductId());
@@ -140,6 +195,7 @@ public class MasterProductViewModel extends BaseViewModel {
             sendEvent(Event.FOCUS_INVALID_VIEWS);
           }
           setCurrentProduct(product);
+          captureInitialQuantityUnits(product);
         });
       }
     } else {
@@ -150,7 +206,15 @@ public class MasterProductViewModel extends BaseViewModel {
         sendEvent(Event.FOCUS_INVALID_VIEWS);
       }
       setCurrentProduct(product);
+      captureInitialQuantityUnits(product);
     }
+  }
+
+  private void captureInitialQuantityUnits(Product product) {
+    initialPresetStockQuId = product.getQuIdStockInt();
+    initialPresetPurchaseQuId = product.getQuIdPurchaseInt();
+    initialPresetPriceQuId = product.getQuIdPriceInt();
+    initialPresetConsumeQuId = product.getQuIdConsumeInt();
   }
 
   public boolean isActionEdit() {
@@ -179,11 +243,173 @@ public class MasterProductViewModel extends BaseViewModel {
     return formData.fillProduct(formData.getProductLive().getValue());
   }
 
+  private void syncQuickPackagingToProduct() {
+    if (isActionEdit() || quantityUnits == null) {
+      return;
+    }
+    Boolean showQuickCard = showQuickPackagingEntryLive.getValue();
+    if (showQuickCard == null || !showQuickCard) {
+      return;
+    }
+    Product product = formData.getProductLive().getValue();
+    if (product == null) {
+      return;
+    }
+    Integer packagingQuId = resolveQuickQuId(quickPackagingLive.getValue());
+
+    boolean changed = false;
+    if (packagingQuId != null) {
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdPurchaseInt(), initialPresetPurchaseQuId, lastQuickAppliedPurchaseQuId
+      ) && product.getQuIdPurchaseInt() != packagingQuId) {
+        product.setQuIdPurchase(packagingQuId);
+        changed = true;
+      }
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdPriceInt(), initialPresetPriceQuId, lastQuickAppliedPriceQuId
+      ) && product.getQuIdPriceInt() != packagingQuId) {
+        product.setQuIdPrice(packagingQuId);
+        changed = true;
+      }
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdStockInt(), initialPresetStockQuId, lastQuickAppliedStockQuId
+      ) && product.getQuIdStockInt() != packagingQuId) {
+        product.setQuIdStock(packagingQuId);
+        changed = true;
+      }
+      if (QuickPackagingSyncUtil.isQuickOwned(
+          product.getQuIdConsumeInt(), initialPresetConsumeQuId, lastQuickAppliedConsumeQuId
+      ) && product.getQuIdConsumeInt() != packagingQuId) {
+        product.setQuIdConsume(packagingQuId);
+        changed = true;
+      }
+      lastQuickAppliedPurchaseQuId = packagingQuId;
+      lastQuickAppliedPriceQuId = packagingQuId;
+      lastQuickAppliedStockQuId = packagingQuId;
+      lastQuickAppliedConsumeQuId = packagingQuId;
+    }
+    if (!changed) {
+      return;
+    }
+    String currentName = formData.getNameLive().getValue();
+    if (currentName != null) {
+      product.setName(currentName);
+    }
+    formData.getProductLive().setValue(product);
+  }
+
+  @Nullable
+  private QuantityUnit findUniqueQuantityUnitByName(String name) {
+    QuantityUnit match = null;
+    for (QuantityUnit quantityUnit : quantityUnits) {
+      if (quantityUnit.getName() != null && quantityUnit.getName().trim().equalsIgnoreCase(name)) {
+        if (match != null) {
+          return null;
+        }
+        match = quantityUnit;
+      }
+    }
+    return match;
+  }
+
+  public void setQuickPackaging(@Nullable String name) {
+    quickPackagingLive.setValue(name);
+    updateQuickQuMissingFlags();
+    syncQuickPackagingToProduct();
+  }
+
+  public void setQuickContentUnit(@Nullable String name) {
+    quickContentUnitLive.setValue(name);
+    updateQuickQuMissingFlags();
+    syncQuickPackagingToProduct();
+  }
+
+  private void updateQuickQuMissingFlags() {
+    quickPackagingQuMissingLive.setValue(isQuickQuMissing(quickPackagingLive.getValue()));
+    quickContentQuMissingLive.setValue(isQuickQuMissing(quickContentUnitLive.getValue()));
+  }
+
+  private boolean isQuickQuMissing(@Nullable String name) {
+    if (isBlank(name) || quantityUnits == null) {
+      return false;
+    }
+    return findUniqueQuantityUnitByName(name.trim()) == null;
+  }
+
+  @Nullable
+  private Integer resolveQuickQuId(@Nullable String name) {
+    if (isBlank(name) || quantityUnits == null) {
+      return null;
+    }
+    QuantityUnit match = findUniqueQuantityUnitByName(name.trim());
+    return match != null ? match.getId() : null;
+  }
+
+  public void createQuickQuantityUnit(
+      @Nullable String name,
+      @Nullable Consumer<QuantityUnit> onCreated
+  ) {
+    if (isBlank(name)) {
+      return;
+    }
+    String trimmedName = name.trim();
+    JSONObject body = new JSONObject();
+    try {
+      body.put("name", trimmedName);
+      body.put("name_plural", trimmedName);
+    } catch (JSONException e) {
+      if (debug) {
+        Log.e(TAG, "createQuickQuantityUnit: " + e);
+      }
+      return;
+    }
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.QUANTITY_UNITS),
+        body,
+        response -> {
+          int objectId = -1;
+          try {
+            objectId = response.getInt("created_object_id");
+          } catch (JSONException e) {
+            if (debug) {
+              Log.e(TAG, "createQuickQuantityUnit: " + e);
+            }
+          }
+          if (objectId == -1) {
+            return;
+          }
+          QuantityUnit created = new QuantityUnit(objectId, trimmedName);
+          if (quantityUnits == null) {
+            quantityUnits = new ArrayList<>();
+          }
+          quantityUnits.add(created);
+          updateQuickQuMissingFlags();
+          syncQuickPackagingToProduct();
+          if (onCreated != null) {
+            onCreated.accept(created);
+          }
+        },
+        error -> {
+          showNetworkErrorMessage(error);
+          if (debug) {
+            Log.e(TAG, "createQuickQuantityUnit: " + error);
+          }
+        }
+    );
+  }
+
+  private static boolean isBlank(@Nullable String value) {
+    return value == null || value.isBlank();
+  }
+
   public void loadFromDatabase(boolean downloadAfterLoading) {
     repository.loadFromDatabase(data -> {
       this.products = data.getProducts();
       this.productBarcodes = data.getBarcodes();
       this.pendingProductBarcodes = data.getPendingProductBarcodes();
+      this.quantityUnits = data.getQuantityUnits();
+      updateQuickQuMissingFlags();
+      syncQuickPackagingToProduct();
       formData.getProductNamesLive().setValue(getProductNames(this.products, null));
 
       if (downloadAfterLoading) {
@@ -208,7 +434,8 @@ public class MasterProductViewModel extends BaseViewModel {
         false,
         extraQueueItem,
         Product.class,
-        ProductBarcode.class
+        ProductBarcode.class,
+        QuantityUnit.class
     );
   }
 
@@ -281,21 +508,43 @@ public class MasterProductViewModel extends BaseViewModel {
                 Log.e(TAG, "saveProduct: " + e);
               }
             }
+            Integer packagingQuId = null;
+            if (objectId != -1
+                && Boolean.TRUE.equals(showQuickPackagingEntryLive.getValue())) {
+              product.setId(objectId);
+              packagingQuId = resolveQuickQuId(quickPackagingLive.getValue());
+            }
+            int finalObjectId = objectId;
+            Integer finalPackagingQuId = packagingQuId;
             if (withClosing) {
               if (objectId != -1) {
                 Bundle bundle = new Bundle();
                 bundle.putInt(Constants.ARGUMENT.PRODUCT_ID, objectId);
                 sendEvent(Event.SET_PRODUCT_ID, bundle);
               }
-              uploadBarcodesIfNecessary(objectId, () -> sendEvent(Event.NAVIGATE_UP));
+              Runnable proceed =
+                  () -> uploadBarcodesIfNecessary(finalObjectId, () -> sendEvent(Event.NAVIGATE_UP));
+              if (finalPackagingQuId != null) {
+                applyQuickPackagingAndContent(
+                    finalObjectId, product, finalPackagingQuId, proceed
+                );
+              } else {
+                proceed.run();
+              }
             } else {
-              int finalObjectId = objectId;
-              uploadBarcodesIfNecessary(objectId, () -> {
+              Runnable proceed = () -> uploadBarcodesIfNecessary(finalObjectId, () -> {
                 actionEditLive.setValue(true);
                 product.setId(finalObjectId);
                 setCurrentProduct(product);
                 sendEvent(Event.TRANSACTION_SUCCESS);
               });
+              if (finalPackagingQuId != null) {
+                applyQuickPackagingAndContent(
+                    finalObjectId, product, finalPackagingQuId, proceed
+                );
+              } else {
+                proceed.run();
+              }
             }
           },
           error -> {
@@ -306,6 +555,52 @@ public class MasterProductViewModel extends BaseViewModel {
           }
       );
     }
+  }
+
+  private void applyQuickPackagingAndContent(
+      int productId, Product createdProduct, int packagingQuId, Runnable onFinished
+  ) {
+    if (!VersionUtil.isGrocyServerMin400(sharedPrefs)) {
+      onFinished.run();
+      return;
+    }
+    Integer contentQuId = resolveQuickQuId(quickContentUnitLive.getValue());
+    String contentAmountStr = quickContentAmountLive.getValue();
+    boolean validAmount = NumUtil.isStringDouble(contentAmountStr)
+        && NumUtil.toDouble(contentAmountStr) > 0;
+    if (contentQuId == null || !validAmount || packagingQuId == contentQuId) {
+      onFinished.run();
+      return;
+    }
+    if (createdProduct.getQuIdStockInt() != packagingQuId) {
+      onFinished.run();
+      return;
+    }
+    double contentAmount = NumUtil.toDouble(contentAmountStr);
+    createQuickQuantityUnitConversion(productId, packagingQuId, contentQuId, contentAmount, onFinished);
+  }
+
+  private void createQuickQuantityUnitConversion(
+      int productId, int fromQuId, int toQuId, double factor, Runnable onFinished
+  ) {
+    QuantityUnitConversion conversion = new QuantityUnitConversion();
+    conversion.setProductId(String.valueOf(productId));
+    conversion.setFromQuId(fromQuId);
+    conversion.setToQuId(toQuId);
+    conversion.setFactor(factor);
+    dlHelper.post(
+        grocyApi.getObjects(GrocyApi.ENTITY.QUANTITY_UNIT_CONVERSIONS),
+        conversion.getJsonFromConversion(debug, TAG),
+        response -> onFinished.run(),
+        error -> {
+          if (debug) {
+            Log.w(TAG, "createQuickQuantityUnitConversion: failed for product " + productId
+                + ": " + describeVolleyError(error));
+          }
+          showMessage(R.string.msg_quick_packaging_content_failed);
+          onFinished.run();
+        }
+    );
   }
 
   private void uploadBarcodesIfNecessary(int productId, Runnable onFinished) {
@@ -369,6 +664,30 @@ public class MasterProductViewModel extends BaseViewModel {
     return forceSaveWithClose;
   }
 
+  public LiveData<Boolean> getShowQuickPackagingEntryLive() {
+    return showQuickPackagingEntryLive;
+  }
+
+  public MutableLiveData<String> getQuickPackagingLive() {
+    return quickPackagingLive;
+  }
+
+  public MutableLiveData<String> getQuickContentAmountLive() {
+    return quickContentAmountLive;
+  }
+
+  public MutableLiveData<String> getQuickContentUnitLive() {
+    return quickContentUnitLive;
+  }
+
+  public LiveData<Boolean> getQuickPackagingQuMissingLive() {
+    return quickPackagingQuMissingLive;
+  }
+
+  public LiveData<Boolean> getQuickContentQuMissingLive() {
+    return quickContentQuMissingLive;
+  }
+
   @NonNull
   public MutableLiveData<Boolean> getIsLoadingLive() {
     return isLoadingLive;
@@ -381,6 +700,7 @@ public class MasterProductViewModel extends BaseViewModel {
 
   @Override
   protected void onCleared() {
+    quickContentAmountLive.removeObserver(quickContentAmountObserver);
     dlHelper.destroy();
     super.onCleared();
   }

@@ -1332,4 +1332,12 @@
   <string name="mtm_notification">Überprüfung des Zertifikats</string>
   <string name="mtm_error_keystore">Fehler beim Laden des Keystores aus Datei</string>
 
+  <!-- Quick packaging/content entry card -->
+  <string name="title_quick_packaging_entry">Verpackung &amp; Inhalt</string>
+  <string name="subtitle_quick_packaging_entry">Bestätigte Werte werden beim nächsten Scan dieses Barcodes vorausgefüllt.</string>
+  <string name="property_quick_content_amount">Inhaltsmenge</string>
+  <string name="msg_quick_qu_missing">„%1$s“ ist noch nicht als Mengeneinheit vorhanden.</string>
+  <string name="action_quick_qu_create">%1$s anlegen</string>
+  <string name="msg_quick_packaging_content_failed">Das Produkt wurde gespeichert, aber Inhaltsmenge/-einheit konnten nicht vollständig übernommen werden. Du kannst sie manuell auf den Seiten „Mengeneinheiten“ bzw. „Umrechnungen“ nachtragen.</string>
+
 </resources>

@@ -176,6 +176,211 @@
 
               </LinearLayout>
 
+              <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Grocy.Card.Text"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:visibility="@{viewModel.showQuickPackagingEntryLive ? View.VISIBLE : View.GONE}">
+
+                <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical">
+
+                  <TextView
+                    style="@style/Widget.Grocy.TextView.ListItem.Title"
+                    android:text="@string/title_quick_packaging_entry" />
+
+                  <TextView
+                    style="@style/Widget.Grocy.TextView.ListItem.Description"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/subtitle_quick_packaging_entry"
+                    android:visibility="@{formData.displayHelpLive ? View.VISIBLE : View.GONE}" />
+
+                  <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chip_group_quick_packaging"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="false">
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_flasche" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_glas" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_dose" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_packung" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_beutel" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_karton" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_schachtel" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_schale" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_becher" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_tube" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_stueck" />
+
+                  </com.google.android.material.chip.ChipGroup>
+
+                  <TextView
+                    android:id="@+id/text_packaging_qu_missing"
+                    style="@style/Widget.Grocy.TextView.ListItem.Description"
+                    android:layout_marginTop="4dp"
+                    android:text="@{@string/msg_quick_qu_missing(viewModel.quickPackagingLive)}"
+                    android:visibility="@{viewModel.quickPackagingQuMissingLive ? View.VISIBLE : View.GONE}" />
+
+                  <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_packaging_qu_create"
+                    style="@style/Widget.Grocy.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="4dp"
+                    android:onClick="@{() -> fragment.onQuickPackagingQuCreateClick()}"
+                    android:text="@{@string/action_quick_qu_create(viewModel.quickPackagingLive)}"
+                    android:visibility="@{viewModel.quickPackagingQuMissingLive ? View.VISIBLE : View.GONE}" />
+
+                  <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/text_input_quick_content_amount"
+                    style="@style/Widget.Grocy.TextInputLayout.FilledBox"
+                    android:layout_marginTop="12dp"
+                    android:hint="@string/property_quick_content_amount">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                      android:id="@+id/edit_text_quick_content_amount"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:inputType="numberDecimal"
+                      android:text="@={viewModel.quickContentAmountLive}" />
+
+                  </com.google.android.material.textfield.TextInputLayout>
+
+                  <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chip_group_quick_content_unit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="false">
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_g" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_kg" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_mg" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_ml" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_l" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_content_unit_cl" />
+
+                    <com.google.android.material.chip.Chip
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:checkable="true"
+                      android:text="@string/label_packaging_stueck" />
+
+                  </com.google.android.material.chip.ChipGroup>
+
+                  <TextView
+                    android:id="@+id/text_content_qu_missing"
+                    style="@style/Widget.Grocy.TextView.ListItem.Description"
+                    android:layout_marginTop="4dp"
+                    android:text="@{@string/msg_quick_qu_missing(viewModel.quickContentUnitLive)}"
+                    android:visibility="@{viewModel.quickContentQuMissingLive ? View.VISIBLE : View.GONE}" />
+
+                  <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_content_qu_create"
+                    style="@style/Widget.Grocy.Button.OutlinedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="4dp"
+                    android:onClick="@{() -> fragment.onQuickContentQuCreateClick()}"
+                    android:text="@{@string/action_quick_qu_create(viewModel.quickContentUnitLive)}"
+                    android:visibility="@{viewModel.quickContentQuMissingLive ? View.VISIBLE : View.GONE}" />
+
+                </LinearLayout>
+
+              </com.google.android.material.card.MaterialCardView>
+
               <LinearLayout
                 android:id="@+id/category_optional"
                 style="@style/Widget.Grocy.LinearLayout.ListItem.SingleLine.Clickable"

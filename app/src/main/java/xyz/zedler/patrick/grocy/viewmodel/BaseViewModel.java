@@ -44,6 +44,7 @@ import com.android.volley.VolleyError;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import org.json.JSONException;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.PREF;
@@ -175,6 +176,23 @@ public class BaseViewModel extends AndroidViewModel {
     } else {
       showMessageLongDuration(messageShort);
     }
+  }
+
+  /**
+   * HTTP status and response body of a failed request, for debug-build logging only. Only ever
+   * reads the server's own response body (Grocy's plain-text/JSON error explanation) - never the
+   * request itself, so no auth header/token/API key can end up in this string.
+   */
+  public static String describeVolleyError(@Nullable VolleyError error) {
+    if (error == null) {
+      return "no response";
+    }
+    if (error.networkResponse == null) {
+      return error.getMessage() != null ? error.getMessage() : error.toString();
+    }
+    String body = error.networkResponse.data != null
+        ? new String(error.networkResponse.data, StandardCharsets.UTF_8) : "";
+    return "HTTP " + error.networkResponse.statusCode + (body.isEmpty() ? "" : ": " + body);
   }
 
   public void showJSONErrorMessage(JSONException error) {

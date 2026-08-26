@@ -30,6 +30,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.lifecycle.ViewModelProvider;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import xyz.zedler.patrick.grocy.Constants;
 import xyz.zedler.patrick.grocy.Constants.ACTION;
@@ -100,6 +102,21 @@ public class MasterProductFragment extends BaseFragment {
     binding.setViewModel(viewModel);
     binding.setFragment(this);
     binding.setLifecycleOwner(getViewLifecycleOwner());
+
+    binding.chipGroupQuickPackaging.setOnCheckedStateChangeListener(
+        (group, checkedIds) -> viewModel.setQuickPackaging(getCheckedChipLabel(group))
+    );
+    binding.chipGroupQuickContentUnit.setOnCheckedStateChangeListener(
+        (group, checkedIds) -> viewModel.setQuickContentUnit(getCheckedChipLabel(group))
+    );
+    viewModel.getQuickPackagingLive().observe(
+        getViewLifecycleOwner(),
+        label -> setCheckedChipByLabel(binding.chipGroupQuickPackaging, label)
+    );
+    viewModel.getQuickContentUnitLive().observe(
+        getViewLifecycleOwner(),
+        label -> setCheckedChipByLabel(binding.chipGroupQuickContentUnit, label)
+    );
 
     SystemBarBehavior systemBarBehavior = new SystemBarBehavior(activity);
     systemBarBehavior.setAppBar(binding.appBar);
@@ -335,6 +352,40 @@ public class MasterProductFragment extends BaseFragment {
   public void clearInputFocus() {
     activity.hideKeyboard();
     binding.textInputName.clearFocus();
+  }
+
+  @Nullable
+  private String getCheckedChipLabel(ChipGroup group) {
+    int checkedId = group.getCheckedChipId();
+    if (checkedId == View.NO_ID) {
+      return null;
+    }
+    Chip chip = group.findViewById(checkedId);
+    return chip != null ? chip.getText().toString() : null;
+  }
+
+  private void setCheckedChipByLabel(ChipGroup group, @Nullable String label) {
+    if (label == null) {
+      group.clearCheck();
+      return;
+    }
+    for (int i = 0; i < group.getChildCount(); i++) {
+      View child = group.getChildAt(i);
+      if (child instanceof Chip && label.contentEquals(((Chip) child).getText())) {
+        if (!((Chip) child).isChecked()) {
+          ((Chip) child).setChecked(true);
+        }
+        return;
+      }
+    }
+  }
+
+  public void onQuickPackagingQuCreateClick() {
+    viewModel.createQuickQuantityUnit(viewModel.getQuickPackagingLive().getValue(), qu -> {});
+  }
+
+  public void onQuickContentQuCreateClick() {
+    viewModel.createQuickQuantityUnit(viewModel.getQuickContentUnitLive().getValue(), qu -> {});
   }
 
   @Override
