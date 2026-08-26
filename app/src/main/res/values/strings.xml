@@ -93,6 +93,8 @@
   <string name="action_proceed">Proceed</string>
   <string name="action_delete">Delete</string>
   <string name="action_save">Save</string>
+  <string name="action_purchase_once">Only use for this purchase</string>
+  <string name="action_save_as_default">Save as new default</string>
   <string name="action_save_close">Save and close</string>
   <string name="action_save_not_close">Save without closing</string>
   <string name="action_logout">Logout</string>
@@ -310,6 +312,7 @@
   <!-- %1$s is a shopping list name -->
   <string name="msg_shopping_list_deleted">%1$s deleted successfully</string>
   <string name="msg_barcode_duplicate">Barcode already exists</string>
+  <string name="msg_barcode_default_changed">You changed the amount or unit from what\'s usually scanned for this barcode. Save this as the new default for next time, or just use it for this purchase?</string>
   <!-- %1$s is a master data type like "Product group" or "Location"; %2$s is the name of it. -->
   <string name="msg_master_delete">Are you sure to delete %1$s \"%2$s\"?</string>
   <!-- %1$s is a product name -->
@@ -615,6 +618,7 @@
   <string name="title_input">Input</string>
   <string name="title_external_barcode_input">External scanner</string>
   <string name="title_confirmation">Confirmation</string>
+  <string name="title_barcode_default_changed">Update remembered default?</string>
   <string name="title_choose_product">Choose product</string>
   <string name="title_pending_products">Pending products</string>
   <string name="title_stored_purchases">Stored purchases</string>

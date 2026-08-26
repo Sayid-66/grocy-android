@@ -42,6 +42,7 @@ public abstract class Event {
   public final static int FOCUS_AMOUNT_FIELD = 30;
   public final static int UPDATE_BOTTOM_APP_BAR = 32;
   public final static int SCROLL_UP = 34;
+  public final static int CONFIRM_BARCODE_DEFAULT_CHANGE = 36;
 
   abstract public int getType();
 

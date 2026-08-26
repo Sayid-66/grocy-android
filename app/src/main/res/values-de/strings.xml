@@ -90,6 +90,8 @@
   <string name="action_proceed">Weiter</string>
   <string name="action_delete">Löschen</string>
   <string name="action_save">Speichern</string>
+  <string name="action_purchase_once">Nur für diesen Einkauf verwenden</string>
+  <string name="action_save_as_default">Als neuen Standard speichern</string>
   <string name="action_save_close">Speichern und schließen</string>
   <string name="action_save_not_close">Speichern ohne zu schließen</string>
   <string name="action_logout">Abmelden</string>
@@ -303,6 +305,7 @@
   <!-- %1$s is a shopping list name -->
   <string name="msg_shopping_list_deleted">%1$s erfolgreich gelöscht</string>
   <string name="msg_barcode_duplicate">Barcode existiert bereits</string>
+  <string name="msg_barcode_default_changed">Menge oder Einheit weichen vom bisher für diesen Barcode üblichen Wert ab. Als neuen Standard für nächstes Mal speichern oder nur für diesen Einkauf verwenden?</string>
   <!-- %1$s is a master data type like "Product group" or "Location"; %2$s is the name of it. -->
   <string name="msg_master_delete">%1$s \"%2$s\" wirklich löschen?</string>
   <!-- %1$s is a product name -->
@@ -608,6 +611,7 @@
   <string name="title_input">Eingabe</string>
   <string name="title_external_barcode_input">Externer Scanner</string>
   <string name="title_confirmation">Bestätigung</string>
+  <string name="title_barcode_default_changed">Gespeicherten Standard aktualisieren?</string>
   <string name="title_choose_product">Produkt auswählen</string>
   <string name="title_pending_products">Anstehende Produkte</string>
   <string name="title_stored_purchases">Gespeicherte Einkäufe</string>
