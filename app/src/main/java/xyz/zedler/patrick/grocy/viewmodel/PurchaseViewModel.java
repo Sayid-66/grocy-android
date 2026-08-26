@@ -744,6 +744,47 @@ public class PurchaseViewModel extends BaseViewModel {
       return;
     }
     ProductBarcode productBarcode = formData.fillProductBarcode();
+    if (productBarcode == null) {
+      // Defensive only: purchaseProduct() already checks formData.isFormValid() before calling
+      // this, and fillProductBarcode() returns null exactly when the form is invalid, so this
+      // should be unreachable in practice.
+      if (debug) {
+        Log.w(TAG, "uploadProductBarcode: form invalid, nothing to upload");
+      }
+      return;
+    }
+    // Never blindly create a second row for a barcode Grocy already knows about (it enforces
+    // barcode uniqueness) - e.g. it may already have just been linked automatically when the
+    // product was created from this exact scanned barcode (see
+    // MasterProductViewModel#linkScannedBarcodeAndUploadPending). Re-posting the same barcode
+    // would fail as a server-side duplicate and show a spurious error even though it is already
+    // correctly linked.
+    ProductBarcode existing = ProductBarcode.getFromBarcode(barcodes, productBarcode.getBarcode());
+    if (existing != null && existing.getProductIdInt() == productBarcode.getProductIdInt()) {
+      // Already linked to this exact product - nothing to do, safe to proceed.
+      formData.getBarcodeLive().setValue(null);
+      if (onSuccess != null) {
+        onSuccess.run();
+      }
+      return;
+    }
+    if (existing != null) {
+      // Belongs to a DIFFERENT product - that existing assignment is left untouched, never
+      // overwritten or reassigned here. Matches this method's existing behavior for any other
+      // barcode-link problem below (network/server error): inform the user and do NOT proceed,
+      // rather than silently completing a purchase whose scanned barcode did not actually get
+      // linked. Keeping this outcome the same regardless of whether the conflict was caught here
+      // (via the locally cached barcode list) or only later by the server rejecting the POST
+      // below as a duplicate (e.g. if the list was stale) avoids the same barcode conflict
+      // producing two different results depending on cache freshness.
+      if (debug) {
+        Log.w(TAG, "uploadProductBarcode: barcode " + productBarcode.getBarcode()
+            + " already belongs to product " + existing.getProductIdInt()
+            + ", not linking it to product " + productBarcode.getProductIdInt());
+      }
+      showMessage(R.string.msg_barcode_duplicate);
+      return;
+    }
     JSONObject body = productBarcode.getJsonFromProductBarcode(debug, TAG);
     ProductBarcode.addProductBarcode(dlHelper, body, () -> {
       formData.getBarcodeLive().setValue(null);
