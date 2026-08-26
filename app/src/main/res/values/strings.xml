@@ -977,6 +977,14 @@
   <string name="property_energy_only">Energy</string>
   <!-- %1$s is a unit for energy, like kcal (kilo calories) -->
   <string name="property_energy_insert">Energy (%1$s) per stock quantity unit</string>
+  <string name="property_off_fat">Fat</string>
+  <string name="property_off_saturated_fat">of which saturates</string>
+  <string name="property_off_carbohydrates">Carbohydrates</string>
+  <string name="property_off_sugars">of which sugars</string>
+  <string name="property_off_proteins">Protein</string>
+  <string name="property_off_salt">Salt</string>
+  <!-- %1$s is a nutrient name (e.g. "Fat"), %2$s is the amount in grams per 100g -->
+  <string name="subtitle_off_nutrient_value">%1$s: %2$s g</string>
   <string name="property_active">Active</string>
   <!--The same string is also in the web interface: Product edit form (maybe you can get the translation from there to prevent different translations for the same string) -->
   <string name="property_never_show">Never show on stock overview</string>

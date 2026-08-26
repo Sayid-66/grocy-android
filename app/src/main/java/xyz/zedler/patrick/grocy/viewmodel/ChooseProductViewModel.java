@@ -23,6 +23,7 @@ package xyz.zedler.patrick.grocy.viewmodel;
 import android.app.Application;
 import android.content.SharedPreferences;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
@@ -40,6 +41,8 @@ import xyz.zedler.patrick.grocy.model.OpenFoodFactsProduct;
 import xyz.zedler.patrick.grocy.model.PendingProduct;
 import xyz.zedler.patrick.grocy.model.Product;
 import xyz.zedler.patrick.grocy.repository.ChooseProductRepository;
+import xyz.zedler.patrick.grocy.util.NumUtil;
+import xyz.zedler.patrick.grocy.util.OffContentAmountUtil;
 import xyz.zedler.patrick.grocy.util.PrefsUtil;
 import xyz.zedler.patrick.grocy.util.SortUtil;
 
@@ -71,6 +74,23 @@ public class ChooseProductViewModel extends BaseViewModel {
   private final boolean forbidCreateProductInitial;
   private final boolean pendingProductsActive;
   private String nameFromOnlineSource;
+  private String offBrand;
+  private String offBrandFull;
+  private String offQuantity;
+  private String offImageUrl;
+  private String offEnergyPer100g;
+  private String offIngredients;
+  private String offAllergens;
+  private String offNutriscore;
+  private String offOrigin;
+  private String offNutrients;
+  private String offPackagingType;
+  private String offPackagingMaterial;
+  private String offContentAmount;
+  private String offContentUnit;
+  private String offCategoriesTagsJoined;
+  private boolean offNutritionUnreliable;
+  private boolean offLookupInProgress;
   private final boolean debug;
 
   public ChooseProductViewModel(
@@ -213,19 +233,49 @@ public class ChooseProductViewModel extends BaseViewModel {
   public void fillProductNameIfPossible() {
     boolean productNameFilled = productNameLive.getValue() != null
         && !productNameLive.getValue().isEmpty();
+    if (offLookupInProgress) {
+      return;
+    }
     if(isOpenFoodFactsEnabled() && !productNameFilled) {
+      offLookupInProgress = true;
       OpenFoodFactsProduct.getOpenFoodFactsProduct(
           dlHelper,
           barcode,
           product -> {
+            offLookupInProgress = false;
             productNameLive.setValue(product.getLocalizedProductName(getApplication()));
             nameFromOnlineSource = product.getLocalizedProductName(getApplication());
+            offBrand = product.getPrimaryBrand();
+            offBrandFull = product.getOtherBrandsInfo();
+            offQuantity = product.getQuantity();
+            offImageUrl = product.getImageUrl();
+            double energy100g = product.getEnergy100g();
+            offEnergyPer100g = energy100g != 0 ? NumUtil.trimAmount(energy100g, 0) : null;
+            offIngredients = product.getIngredientsText();
+            offAllergens = product.getAllergensInfo();
+            offNutriscore = product.getNutriscoreGrade();
+            offOrigin = product.getOriginInfo();
+            offNutrients = buildOffNutrientsSummary(product);
+            offPackagingType = product.getDetectedPackagingType();
+            offPackagingMaterial = product.getDetectedPackagingMaterial();
+            offNutritionUnreliable = product.hasNutritionDataQualityWarning();
+            OffContentAmountUtil.ParsedContentAmount parsedContentAmount = product.getContentAmount();
+            if (parsedContentAmount != null) {
+              offContentAmount = String.valueOf(parsedContentAmount.amount);
+              offContentUnit = parsedContentAmount.unitName;
+            } else {
+              offContentAmount = null;
+              offContentUnit = null;
+            }
+            offCategoriesTagsJoined = !product.getCategoriesTags().isEmpty()
+                ? String.join(",", product.getCategoriesTags()) : null;
             offHelpText.setValue(getString(R.string.msg_product_name_off));
           },
           error -> OpenBeautyFactsProduct.getOpenBeautyFactsProduct(
               dlHelper,
               barcode,
               product -> {
+                offLookupInProgress = false;
                 String productName = product.getLocalizedProductName(getApplication());
                 if (productName != null && !productName.isEmpty()) {
                   productNameLive.setValue(productName);
@@ -237,6 +287,7 @@ public class ChooseProductViewModel extends BaseViewModel {
                 }
               },
               error1 -> {
+                offLookupInProgress = false;
                 offHelpText.setValue(getString(R.string.msg_product_name_lookup_error));
                 sendEvent(Event.FOCUS_INVALID_VIEWS);
               }
@@ -308,6 +359,115 @@ public class ChooseProductViewModel extends BaseViewModel {
 
   public boolean isPendingProductsActive() {
     return pendingProductsActive;
+  }
+
+  @Nullable
+  public String getOffBrand() {
+    return offBrand;
+  }
+
+  @Nullable
+  public String getOffBrandFull() {
+    return offBrandFull;
+  }
+
+  @Nullable
+  public String getOffQuantity() {
+    return offQuantity;
+  }
+
+  @Nullable
+  public String getOffImageUrl() {
+    return offImageUrl;
+  }
+
+  @Nullable
+  public String getOffEnergyPer100g() {
+    return offEnergyPer100g;
+  }
+
+  @Nullable
+  public String getOffIngredients() {
+    return offIngredients;
+  }
+
+  @Nullable
+  public String getOffAllergens() {
+    return offAllergens;
+  }
+
+  @Nullable
+  public String getOffNutriscore() {
+    return offNutriscore;
+  }
+
+  @Nullable
+  public String getOffOrigin() {
+    return offOrigin;
+  }
+
+  @Nullable
+  public String getOffPackagingType() {
+    return offPackagingType;
+  }
+
+  @Nullable
+  public String getOffPackagingMaterial() {
+    return offPackagingMaterial;
+  }
+
+  @Nullable
+  public String getOffContentAmount() {
+    return offContentAmount;
+  }
+
+  @Nullable
+  public String getOffContentUnit() {
+    return offContentUnit;
+  }
+
+  @Nullable
+  public String getOffCategoriesTagsJoined() {
+    return offCategoriesTagsJoined;
+  }
+
+  public boolean isOffNutritionUnreliable() {
+    return offNutritionUnreliable;
+  }
+
+  @Nullable
+  public String getOffNutrients() {
+    return offNutrients;
+  }
+
+  /**
+   * Builds one human-readable "nutrients per 100g" line from whatever Open Food Facts actually
+   * returned. Only concatenates present values with their existing labels - never invents or
+   * estimates a missing nutrient value.
+   */
+  @Nullable
+  private String buildOffNutrientsSummary(OpenFoodFactsProduct product) {
+    List<String> parts = new ArrayList<>();
+    addNutrientPart(parts, R.string.property_off_fat, product.getFat100g());
+    addNutrientPart(parts, R.string.property_off_saturated_fat, product.getSaturatedFat100g());
+    addNutrientPart(parts, R.string.property_off_carbohydrates, product.getCarbohydrates100g());
+    addNutrientPart(parts, R.string.property_off_sugars, product.getSugars100g());
+    addNutrientPart(parts, R.string.property_off_proteins, product.getProteins100g());
+    addNutrientPart(parts, R.string.property_off_salt, product.getSalt100g());
+    // One nutrient per line (not " · "-joined): matches the mobile-friendly, structured layout
+    // ("Fett: ...", "davon gesättigte Fettsäuren: ...", ...) instead of one dense text wall.
+    return parts.isEmpty() ? null : String.join("\n", parts);
+  }
+
+  private void addNutrientPart(List<String> parts, int labelRes, @Nullable Double value) {
+    if (value == null) {
+      return;
+    }
+    parts.add(getApplication().getString(
+        R.string.subtitle_off_nutrient_value,
+        getString(labelRes),
+        NumUtil.trimAmount(value, 1)
+    ));
   }
 
   @NonNull
